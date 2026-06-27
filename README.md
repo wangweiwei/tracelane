@@ -1,9 +1,11 @@
+<p align="center">English | <a href="./README.zh-CN.md">简体中文</a></p>
+
 <p align="center">
-  <img src="https://raw.githubusercontent.com/wangweiwei/tracelane/main/assets/logo.svg" alt="Tracelane" width="320" />
+  <img src="https://raw.githubusercontent.com/wangweiwei/tracelane/main/assets/logo.svg" alt="Tracelane logo — a zero-dependency TypeScript Canvas library that renders full-link traces as a zoomable causal-tree waterfall" width="320" />
 </p>
 
 <p align="center">
-  经线为时间,纬线为行为 —— 全链路行为时间线组件
+  Time as the warp, behavior as the weft — a full-link behavior timeline.
 </p>
 
 <p align="center">
@@ -15,36 +17,38 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/tracelane?style=flat-square&color=blue" alt="license MIT" /></a>
 </p>
 
-把"用户在什么时间、什么端、做了什么,引发了哪些服务行为、各持续多久"画成可缩放、可折叠的因果树瀑布。
+## What is Tracelane?
 
-零运行时依赖,原生 TypeScript + Canvas 实现,不绑定任何框架,可在 React / Vue / 原生页面中直接使用。MIT 协议。
+**Tracelane is a zero-dependency, framework-agnostic TypeScript library that renders full-link user-behavior traces as a zoomable, collapsible causal-tree waterfall on an HTML Canvas, where each span is one row and indentation expresses parent-to-child causality.** It turns "what the user did, on which client, at what time — and which downstream gateway, service, and store calls it triggered, each for how long" into one interactive waterfall.
 
-## 特性
+Built on native Canvas 2D with zero runtime dependencies and bundled TypeScript declarations, Tracelane works identically in React, Vue, Svelte, or vanilla HTML — you mount the `Tracelane` class on a plain DOM element. It is designed for full-link traces, distributed tracing, user-behavior chains, span waterfalls, and observability/APM timeline views, and is MIT-licensed.
 
-- **无限时间轴**:Ctrl/⌘ + 滚轮(或触摸板捏合)以光标为中心缩放,拖拽平移,底部全局缩略图(minimap)永远展示全貌并支持拖拽寻址
-- **因果树瀑布**:每个行为独占一行,缩进表达父子因果(端 → 网关 → 服务 → 存储),点击行展开/收起
-- **同类行为折叠**:`foldSiblings` 把"同类、连续、达到次数门槛"的重复行为(心跳、分页、批量 SQL)折叠为带 ×N 计数的聚合条,展示成员刻痕与累计/均值统计
-- **虚拟行渲染**:只绘制可视区间内的行,行数增长不影响渲染开销
-- **数据自由定制**:两条正交的「缝」——结构上 `fromFlatSpans` / `fromTree` 把任意来源(字段映射)收敛到内部模型;表现上 `colorOf` / `labelOf` / `shapeOf` / `statusOf` 在不动数据的前提下自由换色、改文案、画瞬时事件菱形、标错误状态
-- **可定制**:类别颜色与文案(可选,未注册按内置 8 色调色板自动取色)、明暗主题(`theme: 'dark'` 或 `{ extends: 'dark', ...覆盖 }` 在预设上微调)、时间格式化、tooltip 渲染器均可注入;选中/展开/视口变化均有回调
+## Features
 
-## 安装
+- **Infinite zoomable time axis** — `Ctrl`/`⌘` + wheel (or trackpad pinch) zooms the time axis centered on the cursor; drag to pan; a bottom minimap always shows the whole picture and supports drag-to-seek.
+- **Causal-tree waterfall** — each behavior/span occupies one row, and indentation expresses parent-to-child causality (client → gateway → service → store); click a row to expand or collapse.
+- **Sibling folding** — `foldSiblings` collapses "same-category, consecutive, count-threshold" repeated behaviors (heartbeats, pagination, batched SQL) into a `×N` aggregate bar, showing member tick marks plus cumulative and mean stats.
+- **Virtualized row rendering** — only the rows inside the visible viewport are drawn, so growing the row count does not increase per-frame rendering cost.
+- **Free data customization** — two orthogonal seams: structurally, `fromFlatSpans` / `fromTree` normalize any source (via field mapping) into the canonical model; presentationally, `colorOf` / `labelOf` / `shapeOf` / `statusOf` re-color, re-label, draw instantaneous-event diamonds, and mark error status — all without mutating the data.
+- **Light / dark themes and more** — category colors and labels are optional (unregistered categories auto-pick from a built-in 8-color palette); light/dark themes (`theme: 'dark'` or `{ extends: 'dark', ...overrides }` to tweak a preset); time formatter and tooltip renderer are injectable; selection, expansion, and viewport changes all fire callbacks.
+
+## Installation
 
 ```bash
 npm install tracelane
-# 或
+# or
 pnpm add tracelane
-# 或
+# or
 yarn add tracelane
 ```
 
-## 快速开始
+## Quick Start (ESM)
 
 ```ts
 import { Tracelane, createSpan, foldSiblings } from 'tracelane';
 
 const data = foldSiblings([
-  createSpan('点击「提交订单」', 'ios', 0, 420, [
+  createSpan('Tap "Submit order"', 'ios', 0, 420, [
     createSpan('POST /api/order', 'gw', 60, 900, [
       createSpan('createOrder', 'svc', 130, 780, [
         createSpan('INSERT orders', 'db', 180, 110)
@@ -56,10 +60,10 @@ const data = foldSiblings([
 const tl = new Tracelane(document.getElementById('timeline')!, {
   data,
   categories: {
-    ios: { label: 'iOS 端', color: '#378ADD' },
-    gw: { label: '网关', color: '#D4537E' },
-    svc: { label: '服务', color: '#1D9E75' },
-    db: { label: '存储', color: '#BA7517' }
+    ios: { label: 'iOS client', color: '#378ADD' },
+    gw: { label: 'Gateway', color: '#D4537E' },
+    svc: { label: 'Service', color: '#1D9E75' },
+    db: { label: 'Store', color: '#BA7517' }
   },
   onSelect(node) {
     console.log('selected', node);
@@ -67,69 +71,73 @@ const tl = new Tracelane(document.getElementById('timeline')!, {
 });
 ```
 
-## 通过 CDN(无构建)
+## Use via CDN (no build step)
 
 ```html
 <div id="timeline"></div>
-<script src="https://unpkg.com/tracelane@0.1.0/dist/tracelane.umd.cjs"></script>
+<script src="https://unpkg.com/tracelane/dist/tracelane.umd.cjs"></script>
 <script>
   const { Tracelane, createSpan, foldSiblings } = Tracelane;
   const data = foldSiblings([
-    createSpan('点击「提交订单」', 'ios', 0, 420)
+    createSpan('Tap "Submit order"', 'ios', 0, 420)
   ]);
   new Tracelane(document.getElementById('timeline'), { data });
 </script>
 ```
 
-UMD 全局 `Tracelane` 是承载全部具名导出的命名空间对象(类 `Tracelane`、`createSpan`、`foldSiblings` 等均从中解构)。亦可用 jsDelivr:`https://cdn.jsdelivr.net/npm/tracelane@0.1.0/dist/tracelane.umd.cjs`。
+The UMD global `Tracelane` is a namespace object that carries every named export (the class `Tracelane`, plus `createSpan`, `foldSiblings`, etc., are all destructured from it). jsDelivr works too: `https://cdn.jsdelivr.net/npm/tracelane/dist/tracelane.umd.cjs`.
 
-## 数据模型
+## Data Model
 
-时间单位统一为毫秒,`start` 为相对时间线原点(T+0)的偏移。接入真实数据时建议以服务端时钟为锚点换算,避免端云时钟偏差导致"响应早于请求"。
+Time is always measured in milliseconds, and `start` is the offset relative to the timeline origin (T+0). When ingesting real data, anchor to a server-side clock to avoid client-vs-cloud clock skew that would otherwise make a "response appear earlier than its request".
 
 ```ts
 interface SpanNode {
   kind: 'span';
-  id: string;            // 对应 spanId
-  name: string;          // 展示名
-  category: string;      // 类别 key,需在 categories 中注册
-  start: number;         // 起点(ms)
-  duration: number;      // 持续(ms)
-  children?: TraceNode[]; // 因果子节点
-  hasChildren?: boolean; // 「逻辑上有子节点」,懒加载时 children 未拉取仍画展开箭头;缺省由 children 推导
-  meta?: Record<string, unknown>; // traceId / 用户 / 设备等,回调中原样带回
+  id: string;             // corresponds to spanId
+  name: string;           // display name
+  category: string;       // category key; register it in `categories`
+  start: number;          // start (ms), relative to T+0
+  duration: number;       // duration (ms)
+  children?: TraceNode[]; // causal child nodes
+  hasChildren?: boolean;  // "logically has children": draws the expand arrow even
+                          // when children aren't loaded yet (lazy loading);
+                          // defaults to being derived from `children`
+  meta?: Record<string, unknown>; // traceId / user / device, etc.; returned as-is in callbacks
 }
 
-// GroupNode 复用 SpanNode 的全部公共字段(id/name/category/start/duration/children/meta),
-// 额外多出 count 与 total
+// GroupNode reuses all of SpanNode's common fields
+// (id / name / category / start / duration / children / meta),
+// adding `count` and `total`.
 interface GroupNode {
   kind: 'group';
-  count: number; // 成员数
-  total: number; // 成员耗时之和(注意:duration 是首尾跨度,不是各成员之和)
-  // ...以及 id / name / category / start / duration / children / meta
+  count: number; // number of members
+  total: number; // sum of member durations (note: `duration` is the head-to-tail
+                 // span, not the sum of members)
+  // ...plus id / name / category / start / duration / children / meta
 }
 ```
 
-### 折叠工具
+### Folding utilities
 
 ```ts
 foldSiblings(children, {
-  gap: 12000,   // 相邻重复最大空闲间隔,超过则切成两组
-  minCount: 3,  // 连续重复达到该次数才折叠
-  keyOf: (n) => `${n.category}|${n.name.replace(/\d+/g, '{n}')}` // 折叠键
+  gap: 12000,   // max idle gap between adjacent repeats; beyond it, split into two groups (default 12000)
+  minCount: 3,  // fold only when consecutive repeats reach this count (default 3)
+  keyOf: (n) => `${n.category}|${n.name.replace(/\d+/g, '{n}')}` // fold key
 });
-foldTree(nodes, options); // 对整棵树逐层折叠
+foldTree(nodes, options); // fold an entire tree, level by level
 ```
 
-折叠键的归一化(URL/SQL 参数抽参)建议在埋点或服务端预计算并通过 `keyOf` 注入,客户端默认实现仅做数字归一。
+Normalizing the fold key (e.g. stripping URL/SQL parameters) is best precomputed during instrumentation or on the server and injected via `keyOf`; the default client-side implementation only normalizes digits.
 
-## 数据接入
+## Data Ingestion / Adapters
 
-数据定制分两条正交的「缝」,可分别使用。
+Data customization splits into two orthogonal seams that can be used independently.
 
-### 缝① 结构映射 —— 任意来源 → 规范树
+### Seam 1 — Structural mapping: any source → canonical tree
 
-后端 trace 多是**扁平 span 列表**(每条带 `parentId`、`start` 为绝对时钟)。`fromFlatSpans` 据此建因果树并锚定时间;字段既可传**字段名**也可传**函数**:
+Backend traces are usually a **flat span list** (each row carries a `parentId`, and `start` is an absolute clock). `fromFlatSpans` builds the causal tree from this and anchors the time axis. Each field accepts **either a field name or a function**:
 
 ```ts
 import { fromFlatSpans, foldTree } from 'tracelane';
@@ -137,37 +145,37 @@ import { fromFlatSpans, foldTree } from 'tracelane';
 const data = foldTree(
   fromFlatSpans(rawSpans, {
     id: 'spanId',
-    parentId: 'parentSpanId',           // 空 / 父不存在 => 根
+    parentId: 'parentSpanId',           // null / missing parent => root
     name: (r) => `${r.method} ${r.route}`,
-    category: (r) => r.service,         // 开放字符串,未注册类别会自动取色
-    start: 'startUnixMs',               // 绝对时钟(epoch ms)
+    category: (r) => r.service,         // open string; unregistered categories auto-pick a color
+    start: 'startUnixMs',               // absolute clock (epoch ms)
     duration: 'durationMs',
-    origin: 'auto',                     // T+0 锚点:'auto'=min(start) | number | (rows)=>number
-    meta: (r) => r                      // 原始行原样带回,默认即 r => r
+    origin: 'auto',                     // T+0 anchor: 'auto' = min(start) | number | (rows) => number
+    meta: (r) => r                      // raw row returned as-is; default is r => r
   })
 );
 ```
 
-边界全部确定:**孤儿**(父不存在)提为根、**父子环**打断并降为根、**重复 id** 后者覆盖,均汇总一次 `console.warn`;各层按 `start` 升序。与折叠正交,需要折叠时在外层套 `foldTree`。
+The boundary cases are all defined: **orphans** (parent not found) are promoted to roots, **parent–child cycles** are broken and demoted to roots, and **duplicate ids** are overwritten by the later occurrence — all summarized in a single `console.warn`. Each level is sorted ascending by `start`. Folding is orthogonal: wrap the result in `foldTree` when you want it.
 
-已是嵌套结构的数据用 `fromTree(roots, { children, ...同款字段 })`。想要稳定图例可用 `autoCategories(data)` 预生成 `categories`。
+For data that is already nested, use `fromTree(roots, { children, ...same fields })`. For a stable legend, `autoCategories(data)` pre-generates `categories`.
 
-时间锚定归适配器独占:`origin:'auto'` 给相对视图;要墙钟轴标就传**显式服务端锚点**,再以 `formatTime(t + origin)` 还原,避免端云时钟偏差导致「响应早于请求」。
+Time anchoring belongs solely to the adapter: `origin: 'auto'` yields a relative view; for wall-clock axis labels, pass an **explicit server-side anchor**, then restore it with `formatTime(t + origin)` to avoid client-vs-cloud skew producing a "response earlier than its request".
 
-### 缝② 表现编码 —— 同一份数据换画法
+### Seam 2 — Presentational encoding: same data, different rendering
 
-下列钩子挂在 `TracelaneOptions` 上,全部可选、缺省退回现状、零破坏。入参是规范节点,`meta` 里就是你的原始行:
+The hooks below live on `TracelaneOptions`. They are all optional, fall back to current behavior when omitted, and are non-breaking. Each receives a canonical node, and `meta` holds your original row:
 
-| 钩子 | 作用 | 缺省 |
+| Hook | Purpose | Default |
 | --- | --- | --- |
-| `colorOf(node)` | 覆盖类别色(标签 / 色块 / 缩略图同步) | 返回 `undefined` 用类别色 |
-| `labelOf(node)` | 左栏整行文案 | 折叠组带 `×N`,否则 `name` |
-| `shapeOf(node)` | `'bar'` 时长条 / `'point'` 瞬时事件菱形 | `duration<=0` 判为 `point` |
-| `statusOf(node)` | `'error'` / `'warn'` 行左缘 accent | 返回 `undefined` 不画 |
+| `colorOf(node)` | Override the category color (label / bar / minimap stay in sync) | Returns `undefined` → use the category color |
+| `labelOf(node)` | The full left-column row text | Group nodes get `×N`, otherwise `name` |
+| `shapeOf(node)` | `'bar'` duration bar / `'point'` instantaneous-event diamond | `duration <= 0` is treated as `point` |
+| `statusOf(node)` | `'error'` / `'warn'` accent on the row's left edge | Returns `undefined` → no accent |
 
 ```ts
 new Tracelane(el, {
-  data,                                              // categories 可省,自动取色
+  data,                                              // categories optional; colors auto-assigned
   colorOf: (n) => (n.meta?.error ? '#E24B4A' : undefined),
   statusOf: (n) => (Number(n.meta?.httpStatus) >= 500 ? 'error' : undefined)
 });
@@ -175,53 +183,119 @@ new Tracelane(el, {
 
 ## API
 
-| 方法 | 说明 |
+| Method | Description |
 | --- | --- |
-| `new Tracelane(container, options)` | 挂载组件,见 `TracelaneOptions` 类型注释 |
-| `setData(data, { keepView })` | 替换数据,`keepView` 为 true 时保留当前时间视口与滚动位置 |
-| `appendData(nodes)` | 增量追加顶层节点并保留当前视口(配合 `onReachEdge` 做无限滚动);追加节点的 `start` 须与现有数据同一时间原点 |
-| `setTheme(theme)` | 运行时切换主题(`'light'` / `'dark'` / 覆盖对象);数据 / 视口 / 展开 / 选中状态全部保留 |
-| `zoomIn()` / `zoomOut()` / `zoomTo(t0, t1)` / `resetView()` / `getView()` | 时间视口控制 |
-| `expand(id)` / `collapse(id)` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | 展开状态控制 |
-| `select(id \| null)` | 选中节点并触发 `onSelect` |
-| `reveal(id)` | 展开祖先、滚动到该行、必要时平移时间视口并选中(用于搜索定位) |
-| `destroy()` | 卸载并清理全部监听 |
+| `new Tracelane(container, options)` | Mount the component; see the `TracelaneOptions` type for all options |
+| `setData(data, { keepView })` | Replace the data; when `keepView` is true, the current time viewport and scroll position are preserved |
+| `appendData(nodes)` | Incrementally append top-level nodes while preserving the current viewport (pairs with `onReachEdge` for infinite scroll); appended nodes' `start` must share the same time origin as the existing data |
+| `setTheme(theme)` | Switch theme at runtime (`'light'` / `'dark'` / override object); data, viewport, expansion, and selection state are all preserved |
+| `zoomIn()` / `zoomOut()` / `zoomTo(t0, t1)` / `resetView()` / `getView()` | Time viewport control |
+| `expand(id)` / `collapse(id)` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | Expansion-state control |
+| `select(id \| null)` | Select a node and fire `onSelect` |
+| `reveal(id)` | Expand ancestors, scroll to the row, pan the time viewport if needed, and select — for search-to-locate |
+| `destroy()` | Unmount and remove all listeners |
 
-回调:`onSelect(node)`、`onExpandChange(ids)`、`onViewChange([v0, v1])`、`onReachEdge(edge, [v0, v1])`(`edge` 为 `'start'` / `'end'`;传入即开启「滑动到边缘加载更多」,配合 `appendData` 做无限滚动)。
+Callbacks: `onSelect(node)`, `onExpandChange(ids)`, `onViewChange([v0, v1])`, and `onReachEdge(edge, [v0, v1])` — where `edge` is `'start'` / `'end'`. Passing `onReachEdge` enables "load more on scroll": it pairs with `appendData` for infinite scroll.
 
-## 其他导出
+## Other Exports
 
-除上述 API 外,包还导出:`createSpan` / `createGroup` 手搓节点(`createGroup(name, category, members, meta?)`,`start` / `duration` / `count` / `total` 自动计算);`paletteColor(key)` 与 `CATEGORY_PALETTE` 取按键稳定配色;`lightTheme` / `darkTheme` / `resolveTheme(input)` 构造完整 `TracelaneTheme`;`formatTimeDefault(ms)` 默认时间格式化器。
+Beyond the API above, the package also exports:
 
-## 交互约定
+- `createSpan` / `createGroup` — build nodes by hand. `createGroup(name, category, members, meta?)` computes `start` / `duration` / `count` / `total` automatically.
+- `fromFlatSpans` / `fromTree` / `autoCategories` — structural-mapping adapters (see [Data Ingestion / Adapters](#data-ingestion--adapters)).
+- `paletteColor(key)` and `CATEGORY_PALETTE` — key-stable colors from the built-in 8-color palette.
+- `lightTheme` / `darkTheme` / `resolveTheme(input)` — construct a complete `TracelaneTheme`.
+- `formatTimeDefault(ms)` — the default time formatter.
+- All TypeScript types: `TraceNode` / `SpanNode` / `GroupNode` / `TraceNodeBase` / `CategoryStyle` / `TracelaneOptions` / `TracelaneTheme` / `ThemeOverride` / `ThemeInput` / `FoldOptions` / `NodeStatus` / `BarShape`, plus the adapter types `Get` / `Origin` / `FlatMapping` / `TreeMapping`.
 
-| 操作 | 行为 |
+## Interaction Cheatsheet
+
+| Operation | Behavior |
 | --- | --- |
-| 滚轮 | 纵向滚动行 |
-| Ctrl/⌘ + 滚轮(触摸板捏合) | 以光标为中心缩放时间 |
-| Shift + 滚轮 | 时间轴横移 |
-| 拖拽 | 横向平移时间 + 纵向滚动 |
-| 点击有子节点的行 | 展开 / 收起 |
-| 点击叶子行 | 选中,触发 `onSelect` |
-| 缩略图按下 / 拖动 | 视口寻址 |
+| Wheel | Scroll rows vertically |
+| `Ctrl`/`⌘` + wheel (trackpad pinch) | Zoom time, centered on the cursor |
+| `Shift` + wheel | Pan the time axis horizontally |
+| Drag | Pan time horizontally + scroll vertically |
+| Click a row with children | Expand / collapse |
+| Click a leaf row | Select, firing `onSelect` |
+| Press / drag the minimap | Seek the viewport |
 
-## 本地开发
+## FAQ
+
+### What is Tracelane?
+
+Tracelane is a zero-dependency TypeScript library that visualizes full-link traces and user-behavior chains as a zoomable, collapsible waterfall on an HTML Canvas. Each span/behavior is one row, and indentation expresses parent-to-child causality (e.g. client to gateway to service to store). It renders via Canvas 2D, ships TypeScript types, and is MIT-licensed.
+
+### How is it different from a flamegraph or a Gantt chart?
+
+Like a flamegraph or trace Gantt chart, Tracelane maps duration to bar width on a shared time axis. The difference is layout and interaction: it uses a one-row-per-span causal tree where indentation encodes parent-to-child causality and rows expand/collapse on click, plus it adds an infinite cursor-centered zoomable time axis, a bottom minimap, sibling folding (repeated spans collapse into ×N aggregate bars), and virtualized rendering so only visible rows are drawn.
+
+### Does Tracelane depend on a framework like React or Vue?
+
+No. It is framework-agnostic with zero runtime dependencies. You instantiate the `Tracelane` class against a plain DOM element (`new Tracelane(container, options)`), so it works identically in React, Vue, Svelte, or vanilla HTML. There is also a UMD build for use directly from a CDN with no build step.
+
+### How large a dataset can it handle?
+
+Rendering uses virtualized rows — only spans within the visible viewport are drawn — so vertical row count does not increase per-frame cost. Truncated labels and minimap geometry are cached, and the time axis is independent of dataset depth. For very long histories it also supports load-more-on-scroll: an `onReachEdge` callback fires at the data edge and you append new spans incrementally with `appendData`.
+
+### Does it work with OpenTelemetry, Jaeger, or Zipkin data?
+
+It works with any flat span list or nested tree via generic structural adapters. `fromFlatSpans` takes rows with a `parentId` and absolute-clock timestamps and builds the causal tree (handling orphans, cycles, and duplicate ids), and `fromTree` takes already-nested data. You map your fields (by name or accessor function) to id/parentId/name/category/start/duration. Dedicated `fromOtel`/`fromJaeger`/`fromZipkin` presets are on the roadmap but not yet shipped — today you map those formats through `fromFlatSpans`.
+
+### How do I customize colors, labels, shapes, and status?
+
+Through two orthogonal seams. Structural adapters (`fromFlatSpans` / `fromTree` / `autoCategories`) normalize any source into the canonical tree. Presentational hooks on `TracelaneOptions` re-encode the same data without mutating it: `colorOf(node)` overrides the category color, `labelOf(node)` sets the row text, `shapeOf(node)` chooses a duration bar or an instantaneous-event diamond, and `statusOf(node)` draws an error/warn accent on the row's left edge. Categories can also be registered with explicit label and color, or auto-assigned from a built-in 8-color palette.
+
+### Can I switch between light and dark themes at runtime?
+
+Yes. Pass `theme: 'light' | 'dark'` or an override object (`{ extends: 'dark', ...tokenOverrides }`) at construction, and call `setTheme(theme)` at runtime to switch — data, viewport, expansion, and selection state are all preserved across the change.
+
+### What are the core interactions and the public API?
+
+`Ctrl`/`⌘` + wheel (or trackpad pinch) zooms the time axis centered on the cursor, `Shift` + wheel pans time, drag pans and scrolls, and the bottom minimap seeks the viewport. The public API includes `setData`/`appendData`, `setTheme`, `zoomIn`/`zoomOut`/`zoomTo`/`resetView`/`getView`, `expand`/`collapse`/`collapseAll`/`setExpanded`/`getExpanded`, `select(id)`, `reveal(id)` for search-to-locate, and `destroy()`, plus `onSelect`/`onExpandChange`/`onViewChange`/`onReachEdge` callbacks.
+
+### Is Tracelane free and open source?
+
+Yes. It is MIT-licensed and free for commercial use, published on npm as `tracelane` with zero runtime dependencies and bundled TypeScript declarations.
+
+## Use Cases / When to Use
+
+- Visualizing a full-link user-behavior trace — what the user did, on which client, and which downstream gateway/service/store calls it triggered and how long each took — as one causal waterfall.
+- Inspecting distributed traces (flat spans with `parentId`, or nested trees) as an interactive, zoomable timeline instead of a static image.
+- Collapsing high-frequency repeated spans (heartbeats, pagination, batched SQL) into ×N aggregate bars with member tick marks and cumulative/mean stats to keep dense traces readable.
+- Embedding an observability/APM timeline view inside a React, Vue, or vanilla web app without pulling in a charting framework or runtime dependencies.
+- Browsing very long behavior histories with load-more-on-scroll, appending new spans at the data edge via `onReachEdge` + `appendData`.
+- Search-to-locate workflows where `reveal(id)` expands ancestors, scrolls to the row, pans the time viewport, and selects the matching span.
+
+## Why Tracelane
+
+- **Zero runtime dependencies and framework-agnostic** — a single class mounted on a DOM element, usable in React, Vue, or vanilla, with a UMD/CDN build that needs no bundler.
+- **Causal-tree waterfall layout** — one row per span with indentation encoding parent-to-child causality and click-to-expand/collapse, rather than a flat or stacked timeline.
+- **Two orthogonal customization seams** — structural adapters (`fromFlatSpans` / `fromTree` / `autoCategories`) to ingest any source, and presentational hooks (`colorOf` / `labelOf` / `shapeOf` / `statusOf`) to re-style without mutating data.
+- **Sibling folding** — `foldSiblings` / `foldTree` collapse repeated same-category spans into ×N aggregate bars, a built-in answer to noisy high-frequency events.
+- **Native Canvas 2D foundation** — virtualized row rendering, cursor-centered infinite zoom, a bottom minimap, runtime light/dark theming, and bundled TypeScript types.
+
+## Local Development
 
 ```bash
 pnpm install
-pnpm dev        # 打开 demo(demo/ 目录)
-pnpm typecheck  # 类型检查
-pnpm build      # 产出 dist/(ESM + UMD + d.ts)
+pnpm dev        # open the demo (in demo/)
+pnpm typecheck  # type-check
+pnpm build      # produce dist/ (ESM + UMD + d.ts)
 ```
 
 ## Roadmap
 
-数据接入是这个库对外可用的核心,优先做适配层:
+Data ingestion is the core of what makes this library usable, so the adapter layer comes first:
 
-- [x] `fromFlatSpans(rawSpans, mapping)` 通用扁平转树适配器(字段映射函数,把任意来源收敛到内部模型);`fromTree` 接已嵌套数据
-- [ ] `fromOtel` / `fromJaeger` / `fromZipkin` 预设适配器(标准格式一行接入)
-- [ ] 展开即加载:`childrenResolver` 异步按需下钻,配合 `hasChildren` 标记
-- [ ] LOD 像素级聚合:span 不足 1px 时按密度条渲染
-- [ ] 泳道(实体)视图作为次要模式,与瀑布视图一键切换
-- [ ] 搜索 / 按耗时排序 / 类别筛选
-- [ ] 触摸端手势(捏合缩放、双指平移)
+- [x] `fromFlatSpans(rawSpans, mapping)` — generic flat-to-tree adapter (field-mapping functions normalize any source into the internal model); `fromTree` ingests already-nested data
+- [ ] `fromOtel` / `fromJaeger` / `fromZipkin` — preset adapters (one-line ingestion of standard formats)
+- [ ] Expand-to-load: `childrenResolver` for async on-demand drill-down, paired with the `hasChildren` flag
+- [ ] LOD pixel-level aggregation: render a density bar when spans are under 1px wide
+- [ ] Swimlane (entity) view as a secondary mode, one-click switchable with the waterfall view
+- [ ] Search / sort by duration / filter by category
+- [ ] Touch gestures (pinch zoom, two-finger pan)
+
+## License
+
+[MIT](./LICENSE)

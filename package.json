@@ -1,17 +1,30 @@
 {
   "name": "tracelane",
-  "version": "0.2.0",
-  "description": "Tracelane 全链路行为时间线:无限时间轴缩放平移、因果树瀑布、同类行为折叠、虚拟行渲染。零依赖,框架无关。",
+  "version": "0.1.0",
+  "description": "Zero-dependency TypeScript Canvas library for full-link trace and user-behavior waterfalls: zoomable time axis, causal tree, sibling folding, virtualized rows.",
   "keywords": [
     "trace",
     "tracing",
-    "timeline",
+    "distributed-tracing",
+    "trace-viewer",
+    "span-waterfall",
     "waterfall",
-    "apm",
+    "timeline",
+    "timeline-visualization",
+    "gantt",
+    "flamegraph",
+    "causal-tree",
     "observability",
+    "apm",
     "opentelemetry",
+    "otel",
     "canvas",
-    "visualization"
+    "data-visualization",
+    "dataviz",
+    "typescript",
+    "framework-agnostic",
+    "zero-dependency",
+    "virtualization"
   ],
   "type": "module",
   "main": "./dist/tracelane.umd.cjs",
@@ -27,6 +40,7 @@
   "files": [
     "dist",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE"
   ],
   "sideEffects": false,
@@ -45,6 +59,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "license": "MIT",
+  "author": "wangweiwei",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wangweiwei/tracelane.git"
