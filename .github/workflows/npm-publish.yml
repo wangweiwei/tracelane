@@ -44,13 +44,17 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Commit version bump back to default branch
         run: |
-          if git diff --name-only | grep -E '^package\.json$' >/dev/null; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # tag 触发时 checkout 的是落后于 main 的 detached HEAD;回写必须基于 main 当前 tip,
+          # 否则 push HEAD:main 会 non-fast-forward 被拒。改为:取最新 main → 在其之上重算版本 → 提交。
+          git fetch origin "${DEFAULT_BRANCH}"
+          git checkout -f -B "${DEFAULT_BRANCH}" "origin/${DEFAULT_BRANCH}"
+          pnpm run version
+          if git diff --quiet -- package.json; then
+            echo "main 已是 v${TAG_VERSION#v},无需回写。"
+          else
             git add package.json
             git commit -m "chore(release): v${TAG_VERSION#v}"
-            git fetch origin "${DEFAULT_BRANCH}"
-            git push origin HEAD:"${DEFAULT_BRANCH}"
-          else
-            echo "No version change to commit."
+            git push origin "${DEFAULT_BRANCH}"
           fi
