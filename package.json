@@ -47,10 +47,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dengfengwang/tracelane.git"
+    "url": "git+https://github.com/wangweiwei/tracelane.git"
   },
-  "homepage": "https://github.com/dengfengwang/tracelane#readme",
+  "homepage": "https://github.com/wangweiwei/tracelane#readme",
   "bugs": {
-    "url": "https://github.com/dengfengwang/tracelane/issues"
+    "url": "https://github.com/wangweiwei/tracelane/issues"
   }
 }

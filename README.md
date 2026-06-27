@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/logo.svg" alt="Tracelane" width="320" />
+  <img src="https://raw.githubusercontent.com/wangweiwei/tracelane/main/assets/logo.svg" alt="Tracelane" width="320" />
 </p>
 
 <p align="center">
