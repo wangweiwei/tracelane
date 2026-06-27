@@ -17,6 +17,11 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/tracelane?style=flat-square&color=blue" alt="license MIT" /></a>
 </p>
 
+<p align="center">
+  <a href="https://wangweiwei.github.io/tracelane/"><img src="https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E6%BC%94%E7%A4%BA-378ADD?style=flat-square&logo=github&logoColor=white" alt="在线演示" /></a>
+  <a href="https://stackblitz.com/github/wangweiwei/tracelane"><img src="https://img.shields.io/badge/Open_in_StackBlitz-1389FD?style=flat-square&logo=stackblitz&logoColor=white" alt="Open in StackBlitz" /></a>
+</p>
+
 ## Tracelane 是什么?
 
 **Tracelane 是一个零依赖、框架无关的 TypeScript 库,在 HTML Canvas 上把全链路用户行为 trace 渲染为可缩放、可折叠的因果树瀑布——每个 span 独占一行,缩进表达父子因果。** 它把"用户在什么时间、什么端、做了什么,引发了哪些下游网关、服务、存储行为、各持续多久"画成一条可交互的瀑布。

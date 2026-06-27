@@ -33,9 +33,18 @@ const DEMOS: DemoLink[] = [
   }
 ];
 
-/** 归一化路径以便比较:去掉 index.html 与末尾斜杠 */
+/** 站点 base:GitHub Pages 项目站点为 /tracelane/,本地 dev 为 /(由 vite 注入) */
+const BASE = import.meta.env.BASE_URL;
+
+/** 把 base-relative 的 demo href 拼上站点 base(/loadmore/ → /tracelane/loadmore/) */
+function link(href: string): string {
+  return BASE + href.replace(/^\//, '');
+}
+
+/** 归一化路径以便比较:先剥掉 base 前缀,再去掉 index.html 与末尾斜杠 */
 function norm(path: string): string {
-  return path.replace(/index\.html$/, '').replace(/\/+$/, '') || '/';
+  const rel = BASE !== '/' && path.startsWith(BASE) ? '/' + path.slice(BASE.length) : path;
+  return rel.replace(/index\.html$/, '').replace(/\/+$/, '') || '/';
 }
 
 // —— 主题(亮/暗):持久化到 localStorage,切换时广播 'tl-theme' 事件给各 demo ——
@@ -137,7 +146,7 @@ function render(): void {
 
   const items = DEMOS.map((d) => {
     const active = norm(d.href) === here ? ' active' : '';
-    return `<a class="tl-item${active}" href="${d.href}"><span class="t">${d.title}</span><span class="d">${d.desc}</span></a>`;
+    return `<a class="tl-item${active}" href="${link(d.href)}"><span class="t">${d.title}</span><span class="d">${d.desc}</span></a>`;
   }).join('');
 
   const nav = document.createElement('nav');

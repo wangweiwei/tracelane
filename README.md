@@ -17,6 +17,11 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/tracelane?style=flat-square&color=blue" alt="license MIT" /></a>
 </p>
 
+<p align="center">
+  <a href="https://wangweiwei.github.io/tracelane/"><img src="https://img.shields.io/badge/Live_Demo-378ADD?style=flat-square&logo=github&logoColor=white" alt="Live Demo" /></a>
+  <a href="https://stackblitz.com/github/wangweiwei/tracelane"><img src="https://img.shields.io/badge/Open_in_StackBlitz-1389FD?style=flat-square&logo=stackblitz&logoColor=white" alt="Open in StackBlitz" /></a>
+</p>
+
 ## What is Tracelane?
 
 **Tracelane is a zero-dependency, framework-agnostic TypeScript library that renders full-link user-behavior traces as a zoomable, collapsible causal-tree waterfall on an HTML Canvas, where each span is one row and indentation expresses parent-to-child causality.** It turns "what the user did, on which client, at what time — and which downstream gateway, service, and store calls it triggered, each for how long" into one interactive waterfall.
