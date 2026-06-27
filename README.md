@@ -196,7 +196,7 @@ new Tracelane(el, {
 | `setTheme(theme)` | Switch theme at runtime (`'light'` / `'dark'` / override object); data, viewport, expansion, and selection state are all preserved |
 | `setHiddenCategories(keys)` / `getHiddenCategories()` | Category filter — hide the given categories' spans and their causal subtrees (empty = show all); the minimap filters too |
 | `zoomIn()` / `zoomOut()` / `zoomTo(t0, t1)` / `resetView()` / `getView()` | Time viewport control |
-| `expand(id)` / `collapse(id)` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | Expansion-state control |
+| `expand(id)` / `collapse(id)` / `expandAll()` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | Expansion-state control |
 | `select(id \| null)` | Select a node and fire `onSelect` |
 | `reveal(id)` | Expand ancestors, scroll to the row, pan the time viewport if needed, and select — for search-to-locate |
 | `destroy()` | Unmount and remove all listeners |
@@ -258,7 +258,7 @@ Yes. Pass `theme: 'light' | 'dark'` or an override object (`{ extends: 'dark', .
 
 ### What are the core interactions and the public API?
 
-`Ctrl`/`⌘` + wheel (or trackpad pinch) zooms the time axis centered on the cursor, `Shift` + wheel pans time, drag pans and scrolls, and the bottom minimap seeks the viewport. The public API includes `setData`/`appendData`, `setTheme`, `zoomIn`/`zoomOut`/`zoomTo`/`resetView`/`getView`, `expand`/`collapse`/`collapseAll`/`setExpanded`/`getExpanded`, `select(id)`, `reveal(id)` for search-to-locate, and `destroy()`, plus `onSelect`/`onExpandChange`/`onViewChange`/`onReachEdge` callbacks.
+`Ctrl`/`⌘` + wheel (or trackpad pinch) zooms the time axis centered on the cursor, `Shift` + wheel pans time, drag pans and scrolls, and the bottom minimap seeks the viewport. The public API includes `setData`/`appendData`, `setTheme`, `zoomIn`/`zoomOut`/`zoomTo`/`resetView`/`getView`, `expand`/`collapse`/`expandAll`/`collapseAll`/`setExpanded`/`getExpanded`, `select(id)`, `reveal(id)` for search-to-locate, and `destroy()`, plus `onSelect`/`onExpandChange`/`onViewChange`/`onReachEdge` callbacks.
 
 ### Is Tracelane free and open source?
 

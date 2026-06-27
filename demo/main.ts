@@ -210,6 +210,7 @@ const tl = new Tracelane(document.getElementById('timeline') as HTMLElement, {
 // ============================================================
 document.getElementById('zoom-in')?.addEventListener('click', () => tl.zoomIn());
 document.getElementById('zoom-out')?.addEventListener('click', () => tl.zoomOut());
+document.getElementById('expand-all')?.addEventListener('click', () => tl.expandAll());
 document.getElementById('collapse-all')?.addEventListener('click', () => tl.collapseAll());
 document.getElementById('reset')?.addEventListener('click', () => tl.resetView());
 

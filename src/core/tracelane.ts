@@ -316,6 +316,23 @@ export class Tracelane {
     this.onExpandChange?.(this.getExpanded());
   }
 
+  /**
+   * 展开全部(已加载的)可展开节点,与 collapseAll 对称。直接迭代现成的 byId 索引,
+   * 只收可展开节点(不污染 expanded 状态),不重新遍历数据树。渲染虚拟化,代价仅一次
+   * O(N) 展平。超大数据(数十万节点)时这一下展平可能被感知,是否加确认由应用层决定。
+   */
+  expandAll(): void {
+    const next = new Set<string>();
+    this.byId.forEach((node, id) => {
+      if (isExpandable(node)) next.add(id);
+    });
+    this.expanded = next;
+    this.flatten();
+    this.clampScroll();
+    this.draw();
+    this.onExpandChange?.(this.getExpanded());
+  }
+
   collapseAll(): void {
     if (this.expanded.size === 0) return;
     this.expanded.clear();

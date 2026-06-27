@@ -192,7 +192,7 @@ new Tracelane(el, {
 | `setTheme(theme)` | 运行时切换主题(`'light'` / `'dark'` / 覆盖对象);数据 / 视口 / 展开 / 选中状态全部保留 |
 | `setHiddenCategories(keys)` / `getHiddenCategories()` | 按类别过滤——隐藏给定类别的 span 连同其因果子树(空=全显示);缩略图同步过滤 |
 | `zoomIn()` / `zoomOut()` / `zoomTo(t0, t1)` / `resetView()` / `getView()` | 时间视口控制 |
-| `expand(id)` / `collapse(id)` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | 展开状态控制 |
+| `expand(id)` / `collapse(id)` / `expandAll()` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | 展开状态控制 |
 | `select(id \| null)` | 选中节点并触发 `onSelect` |
 | `reveal(id)` | 展开祖先、滚动到该行、必要时平移时间视口并选中(用于搜索定位) |
 | `destroy()` | 卸载并清理全部监听 |
@@ -254,7 +254,7 @@ Tracelane 是一个零依赖的 TypeScript 库,在 HTML Canvas 上把全链路 t
 
 ### 核心交互与公开 API 有哪些?
 
-Ctrl/⌘ + 滚轮(或触摸板捏合)以光标为中心缩放时间轴,Shift + 滚轮横移时间,拖拽平移并滚动,底部缩略图寻址视口。公开 API 包括 `setData` / `appendData`、`setTheme`、`zoomIn` / `zoomOut` / `zoomTo` / `resetView` / `getView`、`expand` / `collapse` / `collapseAll` / `setExpanded` / `getExpanded`、`select(id)`、用于搜索定位的 `reveal(id)` 以及 `destroy()`,还有 `onSelect` / `onExpandChange` / `onViewChange` / `onReachEdge` 回调。
+Ctrl/⌘ + 滚轮(或触摸板捏合)以光标为中心缩放时间轴,Shift + 滚轮横移时间,拖拽平移并滚动,底部缩略图寻址视口。公开 API 包括 `setData` / `appendData`、`setTheme`、`zoomIn` / `zoomOut` / `zoomTo` / `resetView` / `getView`、`expand` / `collapse` / `expandAll` / `collapseAll` / `setExpanded` / `getExpanded`、`select(id)`、用于搜索定位的 `reveal(id)` 以及 `destroy()`,还有 `onSelect` / `onExpandChange` / `onViewChange` / `onReachEdge` 回调。
 
 ### Tracelane 是免费且开源的吗?
 
