@@ -1,6 +1,6 @@
 {
   "name": "tracelane",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tracelane 全链路行为时间线:无限时间轴缩放平移、因果树瀑布、同类行为折叠、虚拟行渲染。零依赖,框架无关。",
   "keywords": [
     "trace",
