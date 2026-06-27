@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="tracelane">
+  <title>tracelane</title>
+  <!-- mark:时间轴 + 三段级联行为(因果瀑布)+ 瞬时事件菱形 -->
+  <line x1="15" y1="14" x2="15" y2="50" stroke="#9AA1AC" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="15" y="17" width="32" height="8" rx="4" fill="#378ADD"/>
+  <rect x="23" y="29" width="24" height="8" rx="4" fill="#BA7517"/>
+  <rect x="31" y="41" width="16" height="8" rx="4" fill="#1D9E75"/>
+  <path d="M53 16 L58 21 L53 26 L48 21 Z" fill="#D4537E"/>
+</svg>

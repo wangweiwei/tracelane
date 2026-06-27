@@ -1,0 +1,56 @@
+{
+  "name": "tracelane",
+  "version": "0.1.0",
+  "description": "Tracelane 全链路行为时间线:无限时间轴缩放平移、因果树瀑布、同类行为折叠、虚拟行渲染。零依赖,框架无关。",
+  "keywords": [
+    "trace",
+    "tracing",
+    "timeline",
+    "waterfall",
+    "apm",
+    "observability",
+    "opentelemetry",
+    "canvas",
+    "visualization"
+  ],
+  "type": "module",
+  "main": "./dist/tracelane.umd.cjs",
+  "module": "./dist/tracelane.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/tracelane.js",
+      "require": "./dist/tracelane.umd.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "version": "node scripts/bump-version.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dengfengwang/tracelane.git"
+  },
+  "homepage": "https://github.com/dengfengwang/tracelane#readme",
+  "bugs": {
+    "url": "https://github.com/dengfengwang/tracelane/issues"
+  }
+}

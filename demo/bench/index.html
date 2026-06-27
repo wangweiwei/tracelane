@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // 首绘前定主题(默认暗色),消除亮→暗闪烁;nav.ts 随后会接管切换
+      (function () {
+        var t = 'dark';
+        try { if (localStorage.getItem('tl-theme') === 'light') t = 'light'; } catch (e) {}
+        document.documentElement.dataset.theme = t;
+        if (t === 'dark') {
+          var s = document.createElement('style');
+          s.textContent =
+            'html[data-theme="dark"]{--text:#ececec;--text-2:#a8a8a8;--bg:#191a1d;--panel:#25262b;--border:rgba(255,255,255,.10);color-scheme:dark}';
+          document.head.appendChild(s);
+        }
+      })();
+    </script>
+    <title>Tracelane · benchmark</title>
+    <style>
+      :root { color-scheme: light; --text: #1f1f1f; --text-2: #6e6e6e; --bg: #fafaf8; --border: rgba(0,0,0,0.1); }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+      .page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .hint { font-size: 13px; color: var(--text-2); margin: 0 0 14px; }
+      .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+      .bar > span { font-size: 13px; color: var(--text-2); margin-right: 4px; }
+      button { font-size: 13px; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); background: #fff; color: var(--text); cursor: pointer; }
+      button:hover { background: #f1f1ee; }
+      #timeline { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div id="page-head"></div>
+      <div class="bar"><span>规模</span><div id="sizes" style="display:contents"></div></div>
+      <div class="bar"><span>压力</span>
+        <button id="expand-all">全部展开</button>
+        <button id="collapse-all">全部收起</button>
+      </div>
+      <div id="timeline"></div>
+    </div>
+    <script type="module" src="/nav.ts"></script>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

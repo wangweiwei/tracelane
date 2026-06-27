@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // 首绘前定主题(默认暗色),消除亮→暗闪烁;nav.ts 随后会接管切换
+      (function () {
+        var t = 'dark';
+        try { if (localStorage.getItem('tl-theme') === 'light') t = 'light'; } catch (e) {}
+        document.documentElement.dataset.theme = t;
+        if (t === 'dark') {
+          var s = document.createElement('style');
+          s.textContent =
+            'html[data-theme="dark"]{--text:#ececec;--text-2:#a8a8a8;--bg:#191a1d;--panel:#25262b;--border:rgba(255,255,255,.10);color-scheme:dark}';
+          document.head.appendChild(s);
+        }
+      })();
+    </script>
+    <title>Tracelane · 滑动加载更多</title>
+    <style>
+      :root { color-scheme: light; --text: #1f1f1f; --text-2: #6e6e6e; --bg: #fafaf8; --panel: #f1f1ee; --border: rgba(0,0,0,0.1); }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+      .page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; }
+      header { display: flex; align-items: baseline; gap: 12px; }
+      h1 { font-size: 20px; margin: 0; letter-spacing: 0.02em; }
+      h1 .mark { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--text-2); }
+      header a { margin-left: auto; font-size: 13px; color: var(--text-2); }
+      .hint { font-size: 13px; color: var(--text-2); margin: 6px 0 14px; }
+      .hint b { color: var(--text); }
+      .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); margin-bottom: 10px; padding: 4px 12px; background: var(--panel); border-radius: 999px; }
+      .status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #1D9E75; }
+      .status[data-busy='1']::before { background: #EF9F27; animation: pulse 0.8s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+      #timeline { margin-bottom: 4px; }
+      #detail { display: none; margin-top: 14px; background: var(--panel); border-radius: 12px; padding: 12px 16px; font-size: 13px; line-height: 1.7; }
+      #detail .name { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 4px; }
+      #detail .sub { color: var(--text-2); }
+      .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div id="page-head"></div>
+      <div class="status" id="status">加载中…</div>
+      <div id="timeline"></div>
+      <div id="detail"></div>
+    </div>
+    <script type="module" src="/nav.ts"></script>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

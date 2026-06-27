@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 80" width="264" height="80" role="img" aria-label="tracelane">
+  <title>tracelane</title>
+  <style>
+    .wm {
+      fill: #1f2933;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-weight: 600;
+    }
+    .accent { fill: #378ADD; }
+    @media (prefers-color-scheme: dark) {
+      .wm { fill: #e8eaed; }
+      .accent { fill: #5FA0E6; }
+    }
+  </style>
+  <!-- mark:时间轴 + 三段级联行为(因果瀑布)+ 瞬时事件菱形 -->
+  <line x1="22" y1="20" x2="22" y2="60" stroke="#9AA1AC" stroke-width="2" stroke-linecap="round"/>
+  <rect x="22" y="24" width="38" height="8" rx="4" fill="#378ADD"/>
+  <rect x="30" y="36" width="30" height="8" rx="4" fill="#BA7517"/>
+  <rect x="38" y="48" width="22" height="8" rx="4" fill="#1D9E75"/>
+  <path d="M66 23 L71 28 L66 33 L61 28 Z" fill="#D4537E"/>
+  <!-- wordmark -->
+  <text class="wm" x="90" y="51" font-size="33" letter-spacing="-0.5">Trace<tspan class="accent">lane</tspan></text>
+</svg>

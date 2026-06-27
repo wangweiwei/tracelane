@@ -1,0 +1,56 @@
+name: npm Publish
+
+# 推送 v*.*.* tag 即自动发布到 npm。NPM_TOKEN 需在仓库 Secrets 中配置。
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG_VERSION: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Verify npm auth
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bump version from tag
+        run: pnpm run version
+      - name: Build
+        run: pnpm run build
+      - name: Publish to npm
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Commit version bump back to default branch
+        run: |
+          if git diff --name-only | grep -E '^package\.json$' >/dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add package.json
+            git commit -m "chore(release): v${TAG_VERSION#v}"
+            git fetch origin "${DEFAULT_BRANCH}"
+            git push origin HEAD:"${DEFAULT_BRANCH}"
+          else
+            echo "No version change to commit."
+          fi
