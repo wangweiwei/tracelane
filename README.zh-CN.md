@@ -190,6 +190,7 @@ new Tracelane(el, {
 | `setData(data, { keepView })` | 替换数据,`keepView` 为 true 时保留当前时间视口与滚动位置 |
 | `appendData(nodes)` | 增量追加顶层节点并保留当前视口(配合 `onReachEdge` 做无限滚动);追加节点的 `start` 须与现有数据同一时间原点 |
 | `setTheme(theme)` | 运行时切换主题(`'light'` / `'dark'` / 覆盖对象);数据 / 视口 / 展开 / 选中状态全部保留 |
+| `setHiddenCategories(keys)` / `getHiddenCategories()` | 按类别过滤——隐藏给定类别的 span 连同其因果子树(空=全显示);缩略图同步过滤 |
 | `zoomIn()` / `zoomOut()` / `zoomTo(t0, t1)` / `resetView()` / `getView()` | 时间视口控制 |
 | `expand(id)` / `collapse(id)` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | 展开状态控制 |
 | `select(id \| null)` | 选中节点并触发 `onSelect` |
@@ -294,7 +295,7 @@ pnpm build      # 产出 dist/(ESM + UMD + d.ts)
 - [ ] 展开即加载:`childrenResolver` 异步按需下钻,配合 `hasChildren` 标记
 - [ ] LOD 像素级聚合:span 不足 1px 时按密度条渲染
 - [ ] 泳道(实体)视图作为次要模式,与瀑布视图一键切换
-- [ ] 搜索 / 按耗时排序 / 类别筛选
+- [ ] 搜索 / 按耗时排序
 - [ ] 触摸端手势(捏合缩放、双指平移)
 
 ## 许可证

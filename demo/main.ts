@@ -214,12 +214,28 @@ document.getElementById('collapse-all')?.addEventListener('click', () => tl.coll
 document.getElementById('reset')?.addEventListener('click', () => tl.resetView());
 
 // ============================================================
-// 5. 图例 —— 由 categories 自动生成
+// 5. 图例 —— 由 categories 自动生成,点击可按类别过滤(隐藏整支)
 // ============================================================
 const legend = document.getElementById('legend') as HTMLDivElement;
-legend.innerHTML = Object.values(categories)
-  .map((c) => `<span><span class="chip" style="background:${c.color}"></span>${c.label}</span>`)
-  .join('');
+const hiddenCats = new Set<string>();
+function renderLegend(): void {
+  legend.innerHTML = Object.entries(categories)
+    .map(([key, c]) => {
+      const off = hiddenCats.has(key) ? ' is-off' : '';
+      return `<button type="button" class="legend-item${off}" data-cat="${key}" aria-pressed="${!hiddenCats.has(key)}"><span class="chip" style="background:${c.color}"></span>${c.label}</button>`;
+    })
+    .join('');
+}
+renderLegend();
+legend.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-cat]');
+  if (!btn) return;
+  const key = btn.dataset.cat as string;
+  if (hiddenCats.has(key)) hiddenCats.delete(key);
+  else hiddenCats.add(key);
+  tl.setHiddenCategories([...hiddenCats]);
+  renderLegend();
+});
 
 // 顶部侧栏切换主题时,同步切换组件主题(保留视口/展开/选中)
 window.addEventListener('tl-theme', (e) => {

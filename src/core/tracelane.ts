@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import { paletteColor, resolveTheme } from '../theme';
 import { clamp, formatTimeDefault, niceStep, roundRect, truncate } from '../utils';
-import { type Row, deriveExtent, flattenRows, indexTree, isExpandable } from './tree';
+import { type Row, collectVisibleSpans, deriveExtent, flattenRows, indexTree, isExpandable } from './tree';
 import { defaultTooltip } from './tooltip';
 import { Minimap } from './minimap';
 
@@ -71,6 +71,10 @@ export class Tracelane {
   private allSpans: TraceNode[] = [];
   private orderIdx = new Map<string, number>();
   private totalCount = 0;
+  /** 被类别过滤隐藏的类别 key;隐藏其 span 连同因果子树。空=全显示 */
+  private hiddenCategories = new Set<string>();
+  /** allSpans 去掉「被隐藏类别及其子树」后的结果,供缩略图过滤渲染 */
+  private filteredSpans: TraceNode[] = [];
 
   private width = 0;
   private hoverNode: TraceNode | null = null;
@@ -321,6 +325,28 @@ export class Tracelane {
     this.onExpandChange?.(this.getExpanded());
   }
 
+  /** 当前被隐藏的类别 key 列表 */
+  getHiddenCategories(): string[] {
+    return [...this.hiddenCategories];
+  }
+
+  /**
+   * 按类别过滤:隐藏给定类别的 span 连同其因果子树(传空数组=全部显示)。
+   * 缩略图同步过滤;若当前选中行落入被隐藏的支,取消选中并触发 onSelect(null)。
+   */
+  setHiddenCategories(keys: string[]): void {
+    this.hiddenCategories = new Set(keys);
+    this.refreshFilteredSpans();
+    if (this.selected && this.isHiddenByFilter(this.selected)) {
+      this.selected = null;
+      this.onSelect?.(null);
+    }
+    this.flatten();
+    this.clampScroll();
+    this.minimap?.markDirty();
+    this.draw();
+  }
+
   /** 选中节点(null 取消选中),会触发 onSelect */
   select(id: string | null): void {
     this.selected = id ? this.byId.get(id) ?? null : null;
@@ -396,10 +422,31 @@ export class Tracelane {
     this.allSpans = idx.allSpans;
     this.orderIdx = idx.orderIdx;
     this.totalCount = idx.totalCount;
+    this.refreshFilteredSpans();
   }
 
   private flatten(): void {
-    this.rows = flattenRows(this.data, this.expanded);
+    this.rows = flattenRows(this.data, this.expanded, this.hiddenCategories);
+  }
+
+  /** allSpans 去掉「被隐藏类别及其子树」,供缩略图过滤;无过滤时直接复用 allSpans */
+  private refreshFilteredSpans(): void {
+    this.filteredSpans =
+      this.hiddenCategories.size === 0
+        ? this.allSpans
+        : collectVisibleSpans(this.data, this.hiddenCategories);
+  }
+
+  /** 节点本身或任一祖先的类别被隐藏,则它落在被过滤掉的支里 */
+  private isHiddenByFilter(node: TraceNode): boolean {
+    if (this.hiddenCategories.size === 0) return false;
+    let cur: TraceNode | undefined = node;
+    while (cur) {
+      if (this.hiddenCategories.has(cur.category)) return true;
+      const pid = this.parents.get(cur.id);
+      cur = pid ? this.byId.get(pid) : undefined;
+    }
+    return false;
   }
 
   private maxScroll(): number {
@@ -559,7 +606,7 @@ export class Tracelane {
     this.drawEdgeHints();
 
     this.minimap?.draw({
-      allSpans: this.allSpans,
+      allSpans: this.filteredSpans,
       orderIdx: this.orderIdx,
       totalCount: this.totalCount,
       extent: this.extent,

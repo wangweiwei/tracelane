@@ -194,6 +194,7 @@ new Tracelane(el, {
 | `setData(data, { keepView })` | Replace the data; when `keepView` is true, the current time viewport and scroll position are preserved |
 | `appendData(nodes)` | Incrementally append top-level nodes while preserving the current viewport (pairs with `onReachEdge` for infinite scroll); appended nodes' `start` must share the same time origin as the existing data |
 | `setTheme(theme)` | Switch theme at runtime (`'light'` / `'dark'` / override object); data, viewport, expansion, and selection state are all preserved |
+| `setHiddenCategories(keys)` / `getHiddenCategories()` | Category filter — hide the given categories' spans and their causal subtrees (empty = show all); the minimap filters too |
 | `zoomIn()` / `zoomOut()` / `zoomTo(t0, t1)` / `resetView()` / `getView()` | Time viewport control |
 | `expand(id)` / `collapse(id)` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | Expansion-state control |
 | `select(id \| null)` | Select a node and fire `onSelect` |
@@ -298,7 +299,7 @@ Data ingestion is the core of what makes this library usable, so the adapter lay
 - [ ] Expand-to-load: `childrenResolver` for async on-demand drill-down, paired with the `hasChildren` flag
 - [ ] LOD pixel-level aggregation: render a density bar when spans are under 1px wide
 - [ ] Swimlane (entity) view as a secondary mode, one-click switchable with the waterfall view
-- [ ] Search / sort by duration / filter by category
+- [ ] Search / sort by duration
 - [ ] Touch gestures (pinch zoom, two-finger pan)
 
 ## License

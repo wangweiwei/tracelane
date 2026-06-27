@@ -61,11 +61,15 @@ export function deriveExtent(byId: Map<string, TraceNode>): [number, number] {
   return [lo - pad, hi + pad];
 }
 
-/** 把展开状态下的可见行拍平成数组(纵向虚拟滚动的输入) */
-export function flattenRows(data: TraceNode[], expanded: Set<string>): Row[] {
+/**
+ * 把展开状态下的可见行拍平成数组(纵向虚拟滚动的输入)。
+ * hidden 给出被类别过滤隐藏的类别 key:命中的节点连同其因果子树整支跳过。
+ */
+export function flattenRows(data: TraceNode[], expanded: Set<string>, hidden?: Set<string>): Row[] {
   const rows: Row[] = [];
   const rec = (nodes: TraceNode[], depth: number): void => {
     for (const n of nodes) {
+      if (hidden && hidden.has(n.category)) continue; // 隐藏该类别的 span 连同其因果子树
       rows.push({ node: n, depth });
       if (expanded.has(n.id) && n.children && n.children.length > 0) {
         rec(n.children, depth + 1);
@@ -74,4 +78,18 @@ export function flattenRows(data: TraceNode[], expanded: Set<string>): Row[] {
   };
   rec(data, 0);
   return rows;
+}
+
+/** 收集未被类别过滤隐藏的 span(隐藏类别及其子树整支跳过);缩略图据此同步过滤 */
+export function collectVisibleSpans(data: TraceNode[], hidden: Set<string>): TraceNode[] {
+  const out: TraceNode[] = [];
+  const rec = (nodes: TraceNode[]): void => {
+    for (const n of nodes) {
+      if (hidden.has(n.category)) continue;
+      if (n.kind === 'span') out.push(n);
+      if (n.children && n.children.length > 0) rec(n.children);
+    }
+  };
+  rec(data);
+  return out;
 }
