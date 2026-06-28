@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // 首绘前定主题(默认暗色),消除亮→暗闪烁;nav.ts 随后会接管切换
+      (function () {
+        var t = 'dark';
+        try { if (localStorage.getItem('tl-theme') === 'light') t = 'light'; } catch (e) {}
+        document.documentElement.dataset.theme = t;
+        if (t === 'dark') {
+          var s = document.createElement('style');
+          s.textContent =
+            'html[data-theme="dark"]{--text:#ececec;--text-2:#a8a8a8;--bg:#191a1d;--panel:#25262b;--border:rgba(255,255,255,.10);color-scheme:dark}';
+          document.head.appendChild(s);
+        }
+      })();
+    </script>
+    <title>Tracelane · 绝对时间轴</title>
+    <meta name="description" content="Tracelane absolute wall-clock time axis demo: axis:'auto' + originEpoch render real YYYY-MM-DD HH:mm:ss ticks with date chips at day boundaries, and fall back to elapsed when zoomed into a single trace. 绝对墙钟时间轴。" />
+    <meta name="keywords" content="tracelane, absolute time axis, wall clock, originEpoch, timezone, trace timeline, span waterfall, canvas, distributed tracing" />
+    <meta name="author" content="wangweiwei" />
+    <link rel="canonical" href="https://github.com/wangweiwei/tracelane" />
+    <meta name="theme-color" content="#191a1d" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Tracelane · Absolute time axis" />
+    <meta property="og:description" content="axis:'auto' + originEpoch render wall-clock ticks; zoom into a trace to fall back to elapsed — Tracelane causal-tree waterfall." />
+    <meta property="og:url" content="https://github.com/wangweiwei/tracelane" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/wangweiwei/tracelane/main/assets/logo.svg" />
+    <meta property="og:site_name" content="Tracelane" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tracelane · Absolute time axis" />
+    <meta name="twitter:description" content="Wall-clock axis (axis:'auto' + originEpoch) with elapsed fallback on zoom-in." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/wangweiwei/tracelane/main/assets/logo.svg" />
+    <style>
+      :root { color-scheme: light; --text: #1f1f1f; --text-2: #6e6e6e; --bg: #fafaf8; --panel: #f1f1ee; --border: rgba(0,0,0,0.1); }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+      .page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; }
+      .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+      .bar button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+      .bar button:hover { background: var(--panel); }
+      .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); padding: 4px 12px; background: var(--panel); border-radius: 999px; }
+      .live-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--panel); color: var(--text-2); }
+      .live-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #9c9c9c; }
+      .live-badge[data-live='1'] { color: #1D9E75; background: rgba(29,158,117,0.12); }
+      .live-badge[data-live='1']::before { background: #1D9E75; animation: blink 1.1s ease-in-out infinite; }
+      @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+      #timeline { margin-bottom: 4px; }
+      #detail { display: none; margin-top: 14px; background: var(--panel); border-radius: 12px; padding: 12px 16px; font-size: 13px; line-height: 1.7; }
+      #detail .name { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 4px; }
+      #detail .sub { color: var(--text-2); }
+      #detail .abs { font-family: ui-monospace, Menlo, monospace; color: var(--text); }
+      .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div id="page-head"></div>
+      <div class="bar">
+        <div class="status" id="status"></div>
+        <span class="live-badge" id="live-badge" data-live="0">历史</span>
+        <button id="jump-now" type="button">回到当下</button>
+        <button id="push" type="button">推送新数据</button>
+        <button id="view-all" type="button">全貌(墙钟)</button>
+        <button id="view-zoom" type="button">放大单条(时段)</button>
+        <button id="tz" type="button">时区:local</button>
+      </div>
+      <div id="timeline"></div>
+      <div id="detail"></div>
+    </div>
+    <script type="module" src="/nav.ts"></script>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

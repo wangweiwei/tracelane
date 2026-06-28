@@ -1,6 +1,8 @@
 /**
  * Tracelane 数据模型
- * 时间统一使用毫秒,start 是相对时间线原点(T+0)的偏移。
+ * 时间统一使用毫秒,start 是相对时间线原点(offset 0 / origin)的偏移。
+ * 该原点对应的绝对时钟(epoch ms)可经 TracelaneOptions.originEpoch 告知组件,
+ * 据此把 offset 还原成墙钟时间;向后加载历史时 offset 可为负。
  * 接入真实数据时建议以服务端时钟为锚点换算,避免端云时钟偏差。
  */
 
@@ -109,6 +111,14 @@ export interface TracelaneOptions {
   categories?: Record<string, CategoryStyle>;
   /** 时间线全域 [t0, t1],缺省时由数据推导并左右各留 2% 余量 */
   timeExtent?: [number, number];
+  /**
+   * offset 0(时间线原点)对应的绝对时钟,epoch ms。一经设定视为不可变。
+   * 设置后可用 getOriginEpoch()/epochOf()/dateOf() 把内部 offset 还原成墙钟时间
+   * (绝对时间轴、跨批增量加载对齐的基础)。未设时这些方法返回 undefined。
+   * 建议配合 resolveOrigin():先在首批上算出一个固定 origin,再把同一个值同时
+   * 作为各批 mapping 的 origin 与此处的 originEpoch 传入。
+   */
+  originEpoch?: number;
   /** 初始视口 [v0, v1],缺省为全域 */
   initialView?: [number, number];
   /** 初始展开的节点 id */
@@ -125,8 +135,31 @@ export interface TracelaneOptions {
   minimapHeight?: number;
   /** 'light' | 'dark' | 覆盖对象(可带 extends 指定基底,默认 light) */
   theme?: ThemeInput;
-  /** 时间格式化,默认 <1s 显示 ms,否则显示 s */
+  /** 时间格式化,默认 <1s 显示 ms,否则显示 s。仅管时长(tooltip / 色块后缀),不管墙钟刻度 */
   formatTime?: (ms: number) => string;
+  /**
+   * 时间轴标签模式:
+   * - 'elapsed'（默认）：相对 origin 的时段(0 ms / 2.00 s)，即现有行为
+   * - 'absolute'：墙钟时间(需 originEpoch；缺则回退 elapsed 并 warn 一次)
+   * - 'auto'：视野窄/贴近原点时用 elapsed，拉宽或进入历史(负 offset)时自动转绝对(带滞回防抖)
+   */
+  axis?: 'elapsed' | 'absolute' | 'auto';
+  /** 绝对轴的时区,默认 'local'(DST 感知);'utc' 无 DST。完整 IANA 落点留作后续,标签可经 formatAxis 自定义 */
+  timezone?: 'local' | 'utc';
+  /** 'auto' 模式下判定转绝对的视野跨度阈值(ms),默认 60000;带 ±20% 滞回 */
+  autoAbsoluteThresholdMs?: number;
+  /**
+   * 绝对刻度标签格式化,默认 formatAxisDefault(按粒度分级 + 日界日期)。独立于 formatTime。
+   * unit/stepMs/isDayBoundary 描述当前刻度档与是否本地日界。
+   */
+  formatAxis?: (
+    epochMs: number,
+    ctx: {
+      unit: 'ms' | 's' | 'min' | 'hour' | 'day' | 'month' | 'year';
+      stepMs: number;
+      isDayBoundary: boolean;
+    }
+  ) => string;
   /**
    * 表现编码 · 颜色:覆盖类别色(标签文字、色块、缩略图均生效)。
    * 返回 undefined 时退回类别色。可据延迟/错误/状态自由着色。
@@ -156,4 +189,29 @@ export interface TracelaneOptions {
    * 已去抖:停在同一边缘只触发一次,离开该边缘或数据更新后重新武装。
    */
   onReachEdge?: (edge: 'start' | 'end', view: [number, number]) => void;
+  /**
+   * 实时跟随态变化回调(进入/退出 live)。配合 `setLive` / `jumpToNow` / `isLive`:开启后
+   * 末端新数据到达时视口自动推进到最新;用户手动平移/缩放/纵向滚动即退出(回到历史浏览)。
+   * host 据此渲染 Live/History 徽标与「回到当下」按钮。纯可选,不开启则无任何影响。
+   */
+  onLiveChange?: (live: boolean) => void;
+  /**
+   * 显式开启向后(历史)加载。开启后:视口贴到数据**起点**时左缘画加载图标(可点击)、
+   * 拖到起点触发 onReachEdge('start') 并进入加载态;并入更旧数据后用「基于时间的锚点」
+   * 保持视口中心行不跳动。不开启则只有右缘('end')有 UI,只接 end 的用户行为不变。
+   * 配合 setEdgeExhausted('start') 在拉到空批次时收掉「还有更多」提示。
+   */
+  backfill?: boolean;
+  /**
+   * 保留的节点数上限(含所有层级)。`appendData` 并入后若超过,从**远离本次加载方向的一端**
+   * 丢弃整支顶层 trace(向后加载→丢最新、向前加载→丢最旧),并用同一时间锚点保持视口不跳。
+   * 用于历史大数据的内存/性能上界。缺省 = 不限(原行为)。
+   */
+  maxNodes?: number;
+  /**
+   * 缩略图的「整条时间线总域」[t0, t1](或返回它的函数,可随实时增长)。仅影响缩略图显示:
+   * 把已加载段画成总域里的亮色子区、两侧未加载部分画成暗色肩部,便于在大历史里定位。
+   * 纯显示——不改 clampView / 边缘检测(它们仍按已加载 extent)。不传则缩略图按已加载 extent 铺满(原行为)。
+   */
+  totalDomain?: [number, number] | (() => [number, number]);
 }

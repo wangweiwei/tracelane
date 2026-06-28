@@ -16,10 +16,25 @@ export interface TreeIndex {
   parents: Map<string, string>;
   /** 仅 span 节点,DFS 序(缩略图用) */
   allSpans: TraceNode[];
+  /** 与 allSpans 对齐的全节点 DFS 序号(= orderIdx.get(span.id));缩略图免去逐 span 的 Map 查找 */
+  allSpansOrder: number[];
   /** id → DFS 序号(缩略图 y 定位用) */
   orderIdx: Map<string, number>;
   /** 节点总数(≥1) */
   totalCount: number;
+  /** 时间全域 [t0, t1],左右各留 2% 余量(与索引同趟 DFS 求出,免二次遍历) */
+  extent: [number, number];
+  /** 未加 padding 的原始 min(start);空树为 Infinity。增量追加时用于合并 extent */
+  rawLo: number;
+  /** 未加 padding 的原始 max(start+duration);空树为 -Infinity */
+  rawHi: number;
+}
+
+/** 由原始 [lo, hi] 求带 2% 余量的展示 extent;空(lo>hi)回退 [0,1000] */
+export function paddedExtent(lo: number, hi: number): [number, number] {
+  if (!(lo <= hi)) return [0, 1000];
+  const pad = Math.max((hi - lo) * 0.02, 10);
+  return [lo - pad, hi + pad];
 }
 
 /** 能否展开:hasChildren 显式标记优先,否则按已加载的 children 推导(懒加载预留) */
@@ -27,38 +42,47 @@ export function isExpandable(node: TraceNode): boolean {
   return node.hasChildren === true || (!!node.children && node.children.length > 0);
 }
 
-/** 深度优先建立索引:byId / parents / allSpans / orderIdx / totalCount */
+/**
+ * 深度优先建立索引,同趟一并求出时间全域 extent —— 免去原先 deriveExtent 的二次全量遍历。
+ * 产出:byId / parents / allSpans / allSpansOrder / orderIdx / totalCount / extent。
+ */
 export function indexTree(data: TraceNode[]): TreeIndex {
   const byId = new Map<string, TraceNode>();
   const parents = new Map<string, string>();
   const orderIdx = new Map<string, number>();
   const allSpans: TraceNode[] = [];
+  const allSpansOrder: number[] = [];
   let count = 0;
+  let lo = Infinity;
+  let hi = -Infinity;
   const walk = (nodes: TraceNode[], parent: TraceNode | null): void => {
     for (const n of nodes) {
       byId.set(n.id, n);
       if (parent) parents.set(n.id, parent.id);
       orderIdx.set(n.id, count);
+      if (n.start < lo) lo = n.start;
+      const end = n.start + n.duration;
+      if (end > hi) hi = end;
+      if (n.kind === 'span') {
+        allSpans.push(n);
+        allSpansOrder.push(count);
+      }
       count += 1;
-      if (n.kind === 'span') allSpans.push(n);
       if (n.children && n.children.length > 0) walk(n.children, n);
     }
   };
   walk(data, null);
-  return { byId, parents, allSpans, orderIdx, totalCount: Math.max(count, 1) };
-}
-
-/** 由索引推导时间全域 [t0, t1],左右各留 2% 余量 */
-export function deriveExtent(byId: Map<string, TraceNode>): [number, number] {
-  if (byId.size === 0) return [0, 1000];
-  let lo = Infinity;
-  let hi = -Infinity;
-  byId.forEach((n) => {
-    lo = Math.min(lo, n.start);
-    hi = Math.max(hi, n.start + n.duration);
-  });
-  const pad = Math.max((hi - lo) * 0.02, 10);
-  return [lo - pad, hi + pad];
+  return {
+    byId,
+    parents,
+    allSpans,
+    allSpansOrder,
+    orderIdx,
+    totalCount: Math.max(count, 1),
+    extent: paddedExtent(lo, hi),
+    rawLo: lo,
+    rawHi: hi
+  };
 }
 
 /**

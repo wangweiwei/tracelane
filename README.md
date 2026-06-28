@@ -199,19 +199,41 @@ new Tracelane(el, {
 | `expand(id)` / `collapse(id)` / `expandAll()` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | Expansion-state control |
 | `select(id \| null)` | Select a node and fire `onSelect` |
 | `reveal(id)` | Expand ancestors, scroll to the row, pan the time viewport if needed, and select — for search-to-locate |
+| `getOriginEpoch()` / `epochOf(offset)` / `dateOf(offset)` | Wall-clock helpers — map an internal offset to its absolute epoch ms / `Date`. Return `undefined` when no `originEpoch` was set |
+| `setEdgeExhausted(edge, exhausted?)` | Mark an edge as having no more data (e.g. a backward fetch returned empty) to hide its "load more" hint; pass `false` to re-arm |
+| `setLive(on)` / `jumpToNow()` / `isLive()` | Live-follow control. `jumpToNow()` jumps to the newest data and enters live; in live mode incoming end data auto-advances the viewport; any manual pan/zoom/scroll exits live (pairs with `onLiveChange`) |
 | `destroy()` | Unmount and remove all listeners |
 
-Callbacks: `onSelect(node)`, `onExpandChange(ids)`, `onViewChange([v0, v1])`, and `onReachEdge(edge, [v0, v1])` — where `edge` is `'start'` / `'end'`. Passing `onReachEdge` enables "load more on scroll": it pairs with `appendData` for infinite scroll.
+Callbacks: `onSelect(node)`, `onExpandChange(ids)`, `onViewChange([v0, v1])`, and `onReachEdge(edge, [v0, v1])` — where `edge` is `'start'` / `'end'`. Passing `onReachEdge` enables "load more on scroll": it pairs with `appendData` for infinite scroll (forward); set `backfill: true` to also load **older** history at the left edge.
+
+### Absolute (wall-clock) time axis
+
+The axis shows **elapsed** time from the origin by default (`0 ms`, `2.00 s`). To label it with real wall-clock timestamps, set `originEpoch` (the epoch ms that offset 0 maps to) and `axis`:
+
+- `axis: 'elapsed'` (default) — elapsed offsets, unchanged.
+- `axis: 'absolute'` — calendar ticks (`HH:mm:ss`, with a date chip at each local day boundary; full `YYYY-MM-DD HH:mm:ss` is up to your `formatAxis` / tooltip).
+- `axis: 'auto'` — elapsed when zoomed into a single trace, absolute when zoomed out or scrolled into history (with hysteresis so it doesn't flap).
+
+Related options: `timezone` (`'local'` default, or `'utc'`), `autoAbsoluteThresholdMs` (default 60000), and `formatAxis(epochMs, { unit, stepMs, isDayBoundary })` to customize labels (separate from `formatTime`, which stays the duration formatter). Tick generation is DST- and month-length-correct. Use `resolveOrigin(rows, mapping)` to compute one fixed origin and thread it as both each batch's `origin` and the constructor's `originEpoch` so incrementally-loaded batches stay aligned.
+
+### Backward (historical) loading
+
+With `backfill: true`, dragging to the **left** edge fires `onReachEdge('start')`; fetch older spans (mapped with the same fixed origin, so their offsets are negative) and `appendData` them. The viewport's center row stays pixel-stable across the prepend (a time-based anchor, fold-safe). Call `setEdgeExhausted('start')` when there's no more history. Optionally pass `totalDomain` (`[t0, t1]` or a getter) to make the minimap show the loaded window as a bright sub-region inside the full known time range, with dim shoulders for not-yet-loaded regions (display-only; navigation still loads edge-by-edge).
+
+For unbounded history, set `maxNodes` to cap retained nodes: each `appendData` evicts whole top-level traces from the end **away** from the load direction (loading older drops the newest, and vice versa) and re-anchors so the content you're viewing stays put.
+
+For real-time tailing, use `jumpToNow()` / `setLive(on)` with the `onLiveChange(live)` callback: in live mode, end data merged via `appendData` auto-advances the viewport to the newest; any manual pan/zoom/scroll exits live so the user can browse history, and `jumpToNow()` returns. Render your own Live/History badge from `onLiveChange`.
 
 ## Other Exports
 
 Beyond the API above, the package also exports:
 
 - `createSpan` / `createGroup` — build nodes by hand. `createGroup(name, category, members, meta?)` computes `start` / `duration` / `count` / `total` automatically.
-- `fromFlatSpans` / `fromTree` / `autoCategories` — structural-mapping adapters (see [Data Ingestion / Adapters](#data-ingestion--adapters)).
+- `fromFlatSpans` / `fromTree` / `autoCategories` / `resolveOrigin` — structural-mapping adapters (see [Data Ingestion / Adapters](#data-ingestion--adapters)); `resolveOrigin(rows, mapping)` returns the fixed time origin for cross-batch alignment.
 - `paletteColor(key)` and `CATEGORY_PALETTE` — key-stable colors from the built-in 8-color palette.
 - `lightTheme` / `darkTheme` / `resolveTheme(input)` — construct a complete `TracelaneTheme`.
-- `formatTimeDefault(ms)` — the default time formatter.
+- `formatTimeDefault(ms)` — the default duration formatter; `formatAxisDefault(epochMs, ctx)` — the default wall-clock axis formatter.
+- `pickCalendarStep` / `calendarTicks` — the zero-dep calendar tick generator behind the absolute axis.
 - All TypeScript types: `TraceNode` / `SpanNode` / `GroupNode` / `TraceNodeBase` / `CategoryStyle` / `TracelaneOptions` / `TracelaneTheme` / `ThemeOverride` / `ThemeInput` / `FoldOptions` / `NodeStatus` / `BarShape`, plus the adapter types `Get` / `Origin` / `FlatMapping` / `TreeMapping`.
 
 ## Interaction Cheatsheet

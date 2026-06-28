@@ -26,6 +26,12 @@ const DEMOS: DemoLink[] = [
     sub: '<code>onReachEdge</code> + <code>appendData</code> 实现无限滚动。把时间视口<b>拖到最右端继续往右拖</b>,自动模拟请求并并入下一段;每段固定 origin 保证跨段对齐。'
   },
   {
+    href: '/history/',
+    title: '绝对时间轴',
+    desc: 'axis + originEpoch',
+    sub: '<code>axis:"auto"</code> + <code>originEpoch</code>:宽视野显示<b>墙钟时间</b>(YYYY-MM-DD HH:mm:ss,跨天有日期 chip),放大到单条 trace 自动切回<b>时段</b>。详情面板用 <code>dateOf()</code> 还原绝对时刻。(向后加载历史为 Phase 3)'
+  },
+  {
     href: '/bench/',
     title: '性能基准',
     desc: '1万~200万 · 性能 HUD',

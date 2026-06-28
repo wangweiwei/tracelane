@@ -195,19 +195,41 @@ new Tracelane(el, {
 | `expand(id)` / `collapse(id)` / `expandAll()` / `collapseAll()` / `setExpanded(ids)` / `getExpanded()` | 展开状态控制 |
 | `select(id \| null)` | 选中节点并触发 `onSelect` |
 | `reveal(id)` | 展开祖先、滚动到该行、必要时平移时间视口并选中(用于搜索定位) |
+| `getOriginEpoch()` / `epochOf(offset)` / `dateOf(offset)` | 墙钟换算——把内部 offset 还原成绝对 epoch ms / `Date`;未设 `originEpoch` 时返回 `undefined` |
+| `setEdgeExhausted(edge, exhausted?)` | 标记某侧已到头(如向后拉到空批次)以收掉其「加载更多」提示;传 `false` 重新武装 |
+| `setLive(on)` / `jumpToNow()` / `isLive()` | 实时跟随控制。`jumpToNow()` 跳到最新并进入 live;live 下末端新数据自动推进视口;任何手动平移/缩放/滚动即退出(配合 `onLiveChange`) |
 | `destroy()` | 卸载并清理全部监听 |
 
-回调:`onSelect(node)`、`onExpandChange(ids)`、`onViewChange([v0, v1])`、`onReachEdge(edge, [v0, v1])`(`edge` 为 `'start'` / `'end'`;传入即开启「滑动到边缘加载更多」,配合 `appendData` 做无限滚动)。
+回调:`onSelect(node)`、`onExpandChange(ids)`、`onViewChange([v0, v1])`、`onReachEdge(edge, [v0, v1])`(`edge` 为 `'start'` / `'end'`;传入即开启「滑动到边缘加载更多」,配合 `appendData` 做无限滚动;设 `backfill: true` 还能在**左缘加载更早的历史**)。
+
+### 绝对(墙钟)时间轴
+
+时间轴默认显示相对原点的**时段**(`0 ms` / `2.00 s`)。要显示真实墙钟时间戳,设 `originEpoch`(offset 0 对应的 epoch ms)和 `axis`:
+
+- `axis: 'elapsed'`(默认)—— 时段,行为不变。
+- `axis: 'absolute'` —— 日历刻度(`HH:mm:ss`,每个本地日界处带日期 chip;完整 `YYYY-MM-DD HH:mm:ss` 可由 `formatAxis` / tooltip 给出)。
+- `axis: 'auto'` —— 放大到单条 trace 时用时段,拉宽或滚进历史时自动转绝对(带滞回防抖)。
+
+相关选项:`timezone`(默认 `'local'`,或 `'utc'`)、`autoAbsoluteThresholdMs`(默认 60000)、`formatAxis(epochMs, { unit, stepMs, isDayBoundary })` 自定义标签(独立于仍管时长的 `formatTime`)。刻度落点对 DST 与月长正确。用 `resolveOrigin(rows, mapping)` 先算出一个固定 origin,同时作为各批的 `origin` 与构造器的 `originEpoch`,保证增量批次坐标对齐。
+
+### 向后(历史)加载
+
+设 `backfill: true` 后,拖到**左缘**触发 `onReachEdge('start')`;拉取更早的 span(用同一固定 origin 映射,offset 为负)再 `appendData` 前插。前插过程中视口中心行像素不动(基于时间的锚点,折叠安全)。无更多历史时调 `setEdgeExhausted('start')`。可选传 `totalDomain`(`[t0, t1]` 或 getter):缩略图把已加载段画成总域里的亮色子区、未加载侧画暗色肩部(纯显示;导航仍逐缘加载)。
+
+历史无限增长时设 `maxNodes` 限制保留节点数:每次 `appendData` 会从**远离加载方向**的一端按整支 trace 淘汰(向后加载丢最新、向前加载丢最旧),并重锚使正在看的内容不跳。
+
+实时拖尾用 `jumpToNow()` / `setLive(on)` + `onLiveChange(live)` 回调:live 态下经 `appendData` 并入的末端新数据会自动把视口推进到最新;任何手动平移/缩放/滚动即退出 live(回到历史浏览),`jumpToNow()` 可一键回到当下。Live/History 徽标由 `onLiveChange` 自行渲染。
 
 ## 其他导出
 
 除上述 API 外,包还导出:
 
 - `createSpan` / `createGroup` —— 手搓节点。`createGroup(name, category, members, meta?)` 会自动计算 `start` / `duration` / `count` / `total`。
-- `fromFlatSpans` / `fromTree` / `autoCategories` —— 结构映射适配器(详见「数据接入」)。
+- `fromFlatSpans` / `fromTree` / `autoCategories` / `resolveOrigin` —— 结构映射适配器(详见「数据接入」);`resolveOrigin(rows, mapping)` 返回跨批对齐用的固定时间原点。
 - `paletteColor(key)` 与 `CATEGORY_PALETTE` —— 从内置 8 色调色板取按键稳定的配色。
 - `lightTheme` / `darkTheme` / `resolveTheme(input)` —— 构造完整的 `TracelaneTheme`。
-- `formatTimeDefault(ms)` —— 默认时间格式化器。
+- `formatTimeDefault(ms)` —— 默认时长格式化器;`formatAxisDefault(epochMs, ctx)` —— 默认墙钟刻度格式化器。
+- `pickCalendarStep` / `calendarTicks` —— 绝对轴背后的零依赖日历刻度生成器。
 - 全部 TypeScript 类型:`TraceNode` / `SpanNode` / `GroupNode` / `TraceNodeBase` / `CategoryStyle` / `TracelaneOptions` / `TracelaneTheme` / `ThemeOverride` / `ThemeInput` / `FoldOptions` / `NodeStatus` / `BarShape`,以及适配器类型 `Get` / `Origin` / `FlatMapping` / `TreeMapping`。
 
 ## 交互约定

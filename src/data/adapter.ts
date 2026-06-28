@@ -53,13 +53,24 @@ export interface TreeMapping<R> {
   meta?: (row: R) => Record<string, unknown>;
 }
 
-function resolveOrigin<R>(rows: R[], start: Get<R, number>, origin: Origin<R> | undefined): number {
-  const o = origin ?? 'auto';
+/**
+ * 解析时间锚点(T+0 对应的绝对时钟 epoch ms)。
+ * 'auto' 取 rows 的 min(start);number 显式锚;函数自定义。
+ *
+ * 公开导出:增量加载需要「跨批用同一个固定 origin」对齐坐标。调用方先用本函数
+ * 在首批上算出一个 epoch,然后把它同时作为每一批的 `mapping.origin` 和构造器的
+ * `originEpoch` 传入,即可保证前向/后向各批的 offset 落在同一坐标系。
+ */
+export function resolveOrigin<R>(
+  rows: R[],
+  mapping: { start: Get<R, number>; origin?: Origin<R> }
+): number {
+  const o = mapping.origin ?? 'auto';
   if (typeof o === 'number') return o;
   if (typeof o === 'function') return o(rows);
   let min = Infinity;
   for (const row of rows) {
-    const s = Number(read(row, start));
+    const s = Number(read(row, mapping.start));
     if (s < min) min = s;
   }
   return Number.isFinite(min) ? min : 0;
@@ -110,7 +121,7 @@ function warnSummary(orphans: number, cycles: number, dups: number): void {
  */
 export function fromFlatSpans<R>(rows: R[], mapping: FlatMapping<R>): TraceNode[] {
   if (rows.length === 0) return [];
-  const origin = resolveOrigin(rows, mapping.start, mapping.origin);
+  const origin = resolveOrigin(rows, mapping);
 
   const nodes = new Map<string, SpanNode>();
   const parentIdOf = new Map<string, string | null>();
@@ -180,7 +191,7 @@ export function fromTree<R>(roots: R[], mapping: TreeMapping<R>): TraceNode[] {
     }
   };
   collect(roots);
-  const origin = resolveOrigin(all, mapping.start, mapping.origin);
+  const origin = resolveOrigin(all, mapping);
 
   const build = (rows: R[]): SpanNode[] => {
     const out = rows.map((r): SpanNode => {

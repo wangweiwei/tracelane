@@ -35,7 +35,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/tracelane.js",
       "require": "./dist/tracelane.umd.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

@@ -9,9 +9,16 @@ import type {
 } from '../types';
 import { paletteColor, resolveTheme } from '../theme';
 import { clamp, formatTimeDefault, niceStep, roundRect, truncate } from '../utils';
-import { type Row, collectVisibleSpans, deriveExtent, flattenRows, indexTree, isExpandable } from './tree';
+import { type Row, collectVisibleSpans, flattenRows, indexTree, isExpandable, paddedExtent } from './tree';
 import { defaultTooltip } from './tooltip';
 import { Minimap } from './minimap';
+import {
+  type TimeUnit,
+  type TimeZoneMode,
+  calendarTicks,
+  formatAxisDefault,
+  pickCalendarStep
+} from './timeScale';
 
 interface DragState {
   x: number;
@@ -47,6 +54,17 @@ export class Tracelane {
   private readonly height: number;
   private readonly minimapHeight: number;
   private readonly fmt: (ms: number) => string;
+  private readonly axisMode: 'elapsed' | 'absolute' | 'auto';
+  private readonly timezone: TimeZoneMode;
+  private readonly autoAbsoluteThresholdMs: number;
+  private readonly fmtAxis: (
+    epochMs: number,
+    ctx: { unit: TimeUnit; stepMs: number; isDayBoundary: boolean }
+  ) => string;
+  /** 'auto' 模式的绝对/时段闩锁;带滞回防止在阈值/原点接缝处逐帧翻转 */
+  private axisAbsoluteLatched = false;
+  /** originEpoch 缺失时只 warn 一次 */
+  private warnedNoOrigin = false;
   private readonly tooltipRenderer: false | ((node: TraceNode, expanded: boolean) => string);
   private readonly colorOf?: (node: TraceNode) => string | undefined;
   private readonly labelOf?: (node: TraceNode) => string;
@@ -56,9 +74,19 @@ export class Tracelane {
   private readonly onExpandChange?: (ids: string[]) => void;
   private readonly onViewChange?: (view: [number, number]) => void;
   private readonly onReachEdge?: (edge: 'start' | 'end', view: [number, number]) => void;
+  /** 实时跟随态变化回调(进入/退出 live);host 据此渲染 Live/History 徽标 */
+  private readonly onLiveChange?: (live: boolean) => void;
+  /** 显式开启向后(历史)加载:仅此时画左缘提示并对 'start' 边缘做加载态(不影响只接 end 的用户) */
+  private readonly backfill: boolean;
+  /** 缩略图总域(或其 getter);纯显示用,不改 clamp/边缘检测。未设则缩略图按 extent 铺满 */
+  private readonly totalDomain?: [number, number] | (() => [number, number]);
+  /** 保留节点数上限;appendData 超限时从远端非对称淘汰整支 trace。未设 = 不限 */
+  private readonly maxNodes?: number;
 
   private data: TraceNode[] = [];
   private extentFromOptions: [number, number] | undefined;
+  /** offset 0 对应的绝对时钟(epoch ms);不可变。未设则绝对时间相关方法返回 undefined */
+  private readonly originEpoch?: number;
   private extent: [number, number] = [0, 1000];
   private v0 = 0;
   private v1 = 1000;
@@ -69,8 +97,15 @@ export class Tracelane {
   private byId = new Map<string, TraceNode>();
   private parents = new Map<string, string>();
   private allSpans: TraceNode[] = [];
+  /** 与 allSpans 对齐的 DFS 序号;缩略图直接按下标取,省去逐 span 的 orderIdx.get */
+  private allSpansOrder: number[] = [];
   private orderIdx = new Map<string, number>();
   private totalCount = 0;
+  /** indexTree 同趟求出的时间全域(未被 timeExtent 覆盖时用) */
+  private derivedExtent: [number, number] = [0, 1000];
+  /** 未加 padding 的原始 lo/hi;增量尾部追加时据此合并 extent,免全量重扫 */
+  private rawLo = Infinity;
+  private rawHi = -Infinity;
   /** 被类别过滤隐藏的类别 key;隐藏其 span 连同因果子树。空=全显示 */
   private hiddenCategories = new Set<string>();
   /** allSpans 去掉「被隐藏类别及其子树」后的结果,供缩略图过滤渲染 */
@@ -79,6 +114,8 @@ export class Tracelane {
   private width = 0;
   private hoverNode: TraceNode | null = null;
   private hoverRow = -1;
+  /** 上次 tooltip 内容对应的 `${id}|${expanded}` 键;键不变则跳过 innerHTML 重建 */
+  private lastTooltipKey = '';
   private selected: TraceNode | null = null;
   private drag: DragState | null = null;
   private minimapDragging = false;
@@ -91,11 +128,18 @@ export class Tracelane {
   private reachedEdge: 'start' | 'end' | null = null;
   /** 点击「加载更多」图标后置位;下次 appendData/setData 并入数据时把视口滑到新段 */
   private pendingPanToEnd = false;
-  /** 加载更多进行中:驱动刷新图标旋转(独立 rAF 循环),setData 并入数据时停 */
-  private loadingMore = false;
+  /** 向后(历史)加载:点左缘图标 / 拖到起点后置位,下次并入数据时露出新历史 */
+  private pendingPanToStart = false;
+  /** 实时跟随:为真时新数据(末端增长)自动推进视口到最新;用户手动平移/缩放即退出 */
+  private live = false;
+  /** 各侧加载图标的起转时刻(0=未转);两侧独立,支持 start/end 并发各自转各自的 */
+  private spinAt: { start: number; end: number } = { start: 0, end: 0 };
+  /** 各侧加载安全超时句柄(接入方迟迟不返回时自动停那一侧) */
+  private spinTimer: { start: number | null; end: number | null } = { start: null, end: null };
+  /** 各侧「已到头」:host 拉到空批次时经 setEdgeExhausted 置位 → 收掉「还有更多」提示 */
+  private edgeExhausted: { start: boolean; end: boolean } = { start: false, end: false };
+  /** 旋转动画 rAF 循环句柄(任一侧在转即运行) */
   private spinRaf: number | null = null;
-  private spinStart = 0;
-  private spinTimeout: number | null = null;
 
   private readonly ro: ResizeObserver;
   private readonly onWindowMouseMove = (e: MouseEvent) => this.handleWindowMouseMove(e);
@@ -110,6 +154,10 @@ export class Tracelane {
     this.height = options.height ?? 300;
     this.minimapHeight = options.minimapHeight ?? 46;
     this.fmt = options.formatTime ?? formatTimeDefault;
+    this.axisMode = options.axis ?? 'elapsed';
+    this.timezone = options.timezone ?? 'local';
+    this.autoAbsoluteThresholdMs = options.autoAbsoluteThresholdMs ?? 60_000;
+    this.fmtAxis = options.formatAxis ?? ((e, ctx) => formatAxisDefault(e, { ...ctx, tz: this.timezone }));
     this.tooltipRenderer =
       options.tooltip === false
         ? false
@@ -128,7 +176,12 @@ export class Tracelane {
     this.onExpandChange = options.onExpandChange;
     this.onViewChange = options.onViewChange;
     this.onReachEdge = options.onReachEdge;
+    this.onLiveChange = options.onLiveChange;
+    this.backfill = options.backfill ?? false;
+    this.totalDomain = options.totalDomain;
+    this.maxNodes = options.maxNodes;
     this.extentFromOptions = options.timeExtent;
+    this.originEpoch = options.originEpoch;
 
     // ---- DOM ----
     this.wrapper = document.createElement('div');
@@ -204,16 +257,52 @@ export class Tracelane {
 
   // ================= 公开 API =================
 
-  /** 替换数据。keepView 为 true 时保留当前时间视口与滚动位置 */
-  setData(data: TraceNode[], opts: { keepView?: boolean; silent?: boolean } = {}): void {
+  /**
+   * 替换数据。keepView 为 true 时保留当前时间视口与滚动位置。
+   * opts.incremental(仅 appendData 尾部追加快路用):传入「本次新增的顶层 trace」,此时跳过全量
+   * indexTree,只把新批增量并入索引(旧节点序号不变),把每批从 O(总量)降到 O(本批量)。
+   */
+  setData(
+    data: TraceNode[],
+    opts: { keepView?: boolean; silent?: boolean; incremental?: TraceNode[] } = {}
+  ): void {
     const prevEnd = this.extent[1]; // 用于点击加载后滑到新数据
+    const prevStart = this.extent[0]; // 向后加载露出新历史用
+    // 无跳动锚点(§7.5):并入前记下视口中心行的「时间 offset」(fold 不变量),
+    // 并入后用就近匹配把它放回同一纵向像素 —— 前插更旧数据时行不下跳。
+    const viewportH = this.height - AXIS_H;
+    const anchor =
+      opts.keepView && this.rows.length > 0
+        ? {
+            centerIdx: Math.floor((this.scrollY + viewportH / 2) / this.rowHeight),
+            offset: 0 as number
+          }
+        : null;
+    if (anchor) {
+      const row = this.rows[Math.min(Math.max(anchor.centerIdx, 0), this.rows.length - 1)];
+      anchor.offset = row.node.start;
+    }
     this.data = data;
-    this.indexData();
-    this.extent = this.extentFromOptions ?? deriveExtent(this.byId);
+    if (opts.incremental) {
+      // 增量:只并入新批,旧索引与旧截断标签缓存全部保留(尾部追加不改既有节点)
+      this.appendIndexInPlace(opts.incremental);
+      this.refreshFilteredSpans();
+    } else {
+      this.indexData();
+      this.labelCache.clear(); // 全量替换:数据变了,截断标签缓存作废
+    }
+    this.extent = this.extentFromOptions ?? this.derivedExtent;
     this.minimap?.markDirty(); // 数据/extent/orderIdx 变了,缩略图缓存作废
-    this.labelCache.clear(); // 数据变了,截断标签缓存作废
     this.reachedEdge = null; // extent 变了(可能追加了数据),重新武装边缘回调
-    this.clearSpin(); // 数据已并入,停止刷新动画(下面会重绘静止态)
+    // 停掉「数据已落地」那一侧的图标:keepView 时按哪端增长精确停那端(并发加载不会误停另一端),
+    // 全量替换则两端都停。
+    const grewEnd = this.extent[1] > prevEnd;
+    const grewStart = this.extent[0] < prevStart;
+    if (!opts.keepView) this.clearSpin();
+    else {
+      if (grewEnd) this.clearSpin('end');
+      if (grewStart) this.clearSpin('start');
+    }
     const valid = new Set([...this.expanded].filter((id) => this.byId.has(id)));
     this.expanded = valid;
     if (this.selected && !this.byId.has(this.selected.id)) this.selected = null;
@@ -222,13 +311,39 @@ export class Tracelane {
       this.v0 = this.extent[0];
       this.v1 = this.extent[1];
       this.scrollY = 0;
-    } else if (this.pendingPanToEnd && this.extent[1] > prevEnd) {
-      // 点击「加载更多」后:把视口推进到原末端附近,露出新追加的那段
+      this.pendingPanToEnd = false;
+      this.pendingPanToStart = false;
+    } else if (this.live && grewEnd) {
+      // 实时跟随:贴住最新一端,新数据进来即自动推进到末端 + 滚到底部
       const span = this.v1 - this.v0;
-      this.v0 = prevEnd - span * 0.15;
-      this.v1 = this.v0 + span;
+      this.v1 = this.extent[1];
+      this.v0 = this.v1 - span;
+      this.scrollY = Number.MAX_SAFE_INTEGER; // 由 clampScroll 收到 maxScroll(最新行在底部)
+      this.pendingPanToEnd = false;
+      this.pendingPanToStart = false;
+    } else {
+      // 纵向:把锚点行放回原像素位置(就近匹配 offset;append 到底部时 newIdx==centerIdx,自动无操作)
+      if (anchor) {
+        const newIdx = this.rowIndexClosestToOffset(anchor.offset);
+        if (newIdx >= 0) this.scrollY += (newIdx - anchor.centerIdx) * this.rowHeight;
+      }
+      // 横向:露出新追加的一段。两端独立 —— 露出实际增长的那端,并留出离边缘的余量,
+      // 避免小批量时贴边导致立刻再触发(§B1)。
+      const span = this.v1 - this.v0;
+      const margin = span * 0.05;
+      const [e0, e1] = this.extent;
+      const room = e1 - e0 > span + margin;
+      if (this.pendingPanToEnd && grewEnd) {
+        this.v1 = room ? Math.min(prevEnd + span * 0.85, e1 - margin) : prevEnd + span * 0.85;
+        this.v0 = this.v1 - span;
+      } else if (this.pendingPanToStart && grewStart) {
+        this.v0 = room ? Math.max(prevStart - span * 0.85, e0 + margin) : prevStart - span * 0.85;
+        this.v1 = this.v0 + span;
+      }
+      // 复位「数据已到」那端的 pending;另一端(并发加载、数据还没到)保留到它自己的 setData(§B2)
+      if (grewEnd) this.pendingPanToEnd = false;
+      if (grewStart) this.pendingPanToStart = false;
     }
-    this.pendingPanToEnd = false;
     this.clampView();
     this.clampScroll();
     if (!opts.silent) this.draw();
@@ -241,8 +356,73 @@ export class Tracelane {
    */
   appendData(nodes: TraceNode[]): void {
     if (nodes.length === 0) return;
-    const merged = [...this.data, ...nodes].sort((a, b) => a.start - b.start);
+    const hasData = this.data.length > 0;
+    let inMin = Infinity;
+    let inMax = -Infinity;
+    for (const n of nodes) {
+      if (n.start < inMin) inMin = n.start;
+      if (n.start > inMax) inMax = n.start;
+    }
+    const prevMin = hasData ? this.data[0].start : Infinity;
+    const prevMax = hasData ? this.data[this.data.length - 1].start : -Infinity;
+    // 纯尾部追加(本批整体在现有数据之后):旧节点 DFS 序号不变,可走增量索引快路。
+    const tailAppend = hasData && inMin >= prevMax;
+
+    // 快路条件:尾部追加 + 无类别过滤(filteredSpans 与 allSpans 同引用,push 即更新)+ 本批并入后不触发淘汰。
+    // 满足时把每批从 O(已加载总量)降到 O(本批量),消除无限滚动二次曲线。其余情况(前插 backfill /
+    // 交错 / 需淘汰 / 过滤态)一律走下方全量重建,语义与之前完全一致。
+    if (tailAppend && this.hiddenCategories.size === 0) {
+      let willEvict = false;
+      if (this.maxNodes != null && this.maxNodes > 0) {
+        let batchCount = 0;
+        for (const n of nodes) batchCount += this.deepCount(n);
+        willEvict = this.totalCount + batchCount > this.maxNodes;
+      }
+      if (!willEvict) {
+        // 尾部已按 start 有序,直接 concat 免全量 sort
+        this.setData(this.data.concat(nodes), { keepView: true, incremental: nodes });
+        return;
+      }
+    }
+
+    // 全量路径:淘汰方向用并入前数据判定(整体更旧→前插丢最新端;更新→追加丢最旧端;交错→不淘汰)
+    let dropFromEnd: boolean | null = null;
+    if (this.maxNodes != null && this.maxNodes > 0 && hasData) {
+      dropFromEnd = inMax <= prevMin ? true : inMin >= prevMax ? false : null;
+    }
+    let merged = [...this.data, ...nodes].sort((a, b) => a.start - b.start);
+    if (dropFromEnd !== null) merged = this.evictToCap(merged, dropFromEnd);
     this.setData(merged, { keepView: true });
+  }
+
+  /** 节点(含后代)总数 */
+  private deepCount(node: TraceNode): number {
+    let n = 1;
+    if (node.children) for (const c of node.children) n += this.deepCount(c);
+    return n;
+  }
+
+  /**
+   * 非对称淘汰到 maxNodes:dropFromEnd 决定丢哪一端(true=丢最新端,前插场景;false=丢最旧端,
+   * 追加场景),始终保留靠近本次加载方向、用户正在看的那侧。整支顶层 trace 为单位丢弃,至少留 1 支。
+   */
+  private evictToCap(sorted: TraceNode[], dropFromEnd: boolean): TraceNode[] {
+    const cap = this.maxNodes as number;
+    const counts = sorted.map((n) => this.deepCount(n));
+    let total = counts.reduce((a, b) => a + b, 0);
+    if (total <= cap) return sorted;
+    let lo = 0;
+    let hi = sorted.length;
+    while (total > cap && hi - lo > 1) {
+      if (dropFromEnd) {
+        hi -= 1;
+        total -= counts[hi];
+      } else {
+        total -= counts[lo];
+        lo += 1;
+      }
+    }
+    return sorted.slice(lo, hi);
   }
 
   /** 运行时切换主题(亮/暗/覆盖对象);数据、视口、展开、选中等状态全部保留 */
@@ -286,6 +466,82 @@ export class Tracelane {
     this.clampView();
     this.draw();
     this.emitView();
+  }
+
+  /** offset 0 对应的绝对时钟(epoch ms);未设 originEpoch 时返回 undefined */
+  getOriginEpoch(): number | undefined {
+    return this.originEpoch;
+  }
+
+  /** 内部 offset(ms)→ 绝对时钟 epoch ms;未设 originEpoch 时返回 undefined(不返回 NaN) */
+  epochOf(offset: number): number | undefined {
+    return this.originEpoch == null ? undefined : this.originEpoch + offset;
+  }
+
+  /** 内部 offset(ms)→ Date;未设 originEpoch 时返回 undefined(不返回 Invalid Date) */
+  dateOf(offset: number): Date | undefined {
+    const e = this.epochOf(offset);
+    return e == null ? undefined : new Date(e);
+  }
+
+  /** 当前是否处于实时跟随态 */
+  isLive(): boolean {
+    return this.live;
+  }
+
+  /**
+   * 开/关实时跟随。开启时把视口推进到最新一端(等同 jumpToNow);用户手动平移/缩放/纵向滚动
+   * 会自动退出(见 exitLive)。状态变化触发 onLiveChange,供 host 渲染 Live/History 徽标。
+   */
+  setLive(on: boolean): void {
+    if (on) {
+      this.jumpToNow();
+      return;
+    }
+    if (!this.live) return;
+    this.live = false;
+    this.onLiveChange?.(false);
+    this.draw();
+  }
+
+  /** 跳到当下:视口推进到数据最新一端、滚到底部,并进入实时跟随态(可一键逆转 = setLive(false)) */
+  jumpToNow(): void {
+    const span = this.v1 - this.v0;
+    this.v1 = this.extent[1];
+    this.v0 = this.v1 - span;
+    this.scrollY = this.maxScroll();
+    this.clampView();
+    this.clampScroll();
+    const was = this.live;
+    this.live = true;
+    if (!was) this.onLiveChange?.(true);
+    this.emitView();
+    this.draw();
+  }
+
+  /** 用户手动操作视口时退出实时跟随(平移/缩放/纵向滚动都算接管) */
+  private exitLive(): void {
+    if (!this.live) return;
+    this.live = false;
+    this.onLiveChange?.(false);
+  }
+
+  /**
+   * 标记某侧「已到头 / 重新有数据」。host 的 onReachEdge 处理器拉到**空批次**时调
+   * setEdgeExhausted('start') 收掉左缘「还有更多」提示;之后若又拿到更早数据,用
+   * setEdgeExhausted('start', false) 重新武装。
+   */
+  setEdgeExhausted(edge: 'start' | 'end', exhausted = true): void {
+    if (this.edgeExhausted[edge] === exhausted) return;
+    this.edgeExhausted[edge] = exhausted;
+    // 空批次到头时 host 不会 appendData/setData(没有数据可并),故这里负责停掉该侧在转的图标,
+    // 否则它会一直转到 12s 安全超时。同时丢弃该侧待露出的标记。
+    if (exhausted && this.isSpinning(edge)) {
+      this.clearSpin(edge);
+      if (edge === 'end') this.pendingPanToEnd = false;
+      else this.pendingPanToStart = false;
+    }
+    this.draw();
   }
 
   getExpanded(): string[] {
@@ -437,13 +693,76 @@ export class Tracelane {
     this.byId = idx.byId;
     this.parents = idx.parents;
     this.allSpans = idx.allSpans;
+    this.allSpansOrder = idx.allSpansOrder;
     this.orderIdx = idx.orderIdx;
     this.totalCount = idx.totalCount;
+    this.derivedExtent = idx.extent;
+    this.rawLo = idx.rawLo;
+    this.rawHi = idx.rawHi;
     this.refreshFilteredSpans();
+  }
+
+  /**
+   * 增量索引:仅把「新追加的顶层 trace」并入现有索引,旧节点的 byId/parents/orderIdx/allSpans 全部
+   * 保持不变(仅适用于纯尾部追加 —— 旧节点 DFS 序号不变)。把每批从 O(已加载总量)降到 O(本批量),
+   * 消除无限滚动的二次曲线。仅 appendData 的尾部追加快路调用,前提见调用处。
+   */
+  private appendIndexInPlace(newRoots: TraceNode[]): void {
+    let count = this.totalCount; // 旧总数即下一个 DFS 序号(进入此路时已加载非空 → totalCount=实数)
+    let lo = this.rawLo;
+    let hi = this.rawHi;
+    const walk = (nodes: TraceNode[], parent: TraceNode | null): void => {
+      for (const n of nodes) {
+        this.byId.set(n.id, n);
+        if (parent) this.parents.set(n.id, parent.id);
+        this.orderIdx.set(n.id, count);
+        if (n.start < lo) lo = n.start;
+        const end = n.start + n.duration;
+        if (end > hi) hi = end;
+        if (n.kind === 'span') {
+          this.allSpans.push(n);
+          this.allSpansOrder.push(count);
+        }
+        count += 1;
+        if (n.children && n.children.length > 0) walk(n.children, n);
+      }
+    };
+    walk(newRoots, null);
+    this.totalCount = Math.max(count, 1);
+    this.rawLo = lo;
+    this.rawHi = hi;
+    this.derivedExtent = paddedExtent(lo, hi);
   }
 
   private flatten(): void {
     this.rows = flattenRows(this.data, this.expanded, this.hiddenCategories);
+  }
+
+  /**
+   * 可见行中 node.start 最接近给定 offset 的行下标(无跳动锚点用)。
+   * 行按 DFS 序、非全局时间序,故线性扫描取最近;每次并入只跑一次,O(rows) 可接受。
+   */
+  private rowIndexClosestToOffset(offset: number): number {
+    let best = -1;
+    let bestDiff = Infinity;
+    for (let i = 0; i < this.rows.length; i += 1) {
+      const diff = Math.abs(this.rows[i].node.start - offset);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * 缩略图 x 映射的时间域:有 totalDomain 用之(并入 extent,保证已加载数据不落到域外),
+   * 否则就是已加载 extent(原行为)。纯显示用 —— clampView / maybeReachEdge 不读它。
+   */
+  private currentDomain(): [number, number] {
+    if (!this.totalDomain) return this.extent;
+    const td = typeof this.totalDomain === 'function' ? this.totalDomain() : this.totalDomain;
+    return [Math.min(td[0], this.extent[0]), Math.max(td[1], this.extent[1])];
   }
 
   /** allSpans 去掉「被隐藏类别及其子树」,供缩略图过滤;无过滤时直接复用 allSpans */
@@ -477,8 +796,10 @@ export class Tracelane {
   private clampView(): void {
     const [e0, e1] = this.extent;
     const full = Math.max(e1 - e0, MIN_WINDOW_MS);
-    // 视宽不超过全域;起点夹在 [e0, e1-span] 内 —— 不允许越界到数据之外的空白。
-    // 越界会把 T+0 之前的空白标成负刻度,并把缩略图视口框推出边界裁掉。
+    // 视宽不超过全域;起点夹在 [e0, e1-span] 内 —— 不允许越界到已加载数据之外的空白
+    // (越界会把数据之外的空白标成刻度,并把缩略图视口框推出边界裁掉)。
+    // 注:向后加载历史(backfill)无需放宽这里 —— 边缘检测 maybeReachEdge 读的是 clampView
+    // **之前**捕获的 desiredV0,贴左缘继续拖即触发 onReachEdge('start'),与末端('end')同理。
     const span = clamp(this.v1 - this.v0, MIN_WINDOW_MS, full);
     const start = clamp(this.v0, e0, e1 - span);
     this.v0 = start;
@@ -499,8 +820,19 @@ export class Tracelane {
     if (edge === null) {
       this.reachedEdge = null; // 离开边缘,重新武装
     } else if (this.reachedEdge !== edge) {
-      this.reachedEdge = edge;
-      if (edge === 'end') this.startSpin(); // 拖动触发的加载也转图标,与点击统一
+      this.reachedEdge = edge; // 置位即去抖:即便下面因到头/在载不 fire,也不会每帧重复进来
+      if (this.edgeExhausted[edge]) return; // 该侧已到头:不再 fire/spin,免得空转 + 反复打扰 host
+      // 串行化:同一时刻只允许一个加载在途。已有一侧在加载时,不再 fire/转另一侧 ——
+      // 避免「库抢先转圈、host 单守卫挡掉请求 → 假 spinner 空转到 12s 超时 / 双 spinner」。
+      // (load 完成后 setData 收尾、reachedEdge 重置,下一侧照常能触发,只挡同时、不挡先后。)
+      if (this.isSpinning()) return;
+      // 拖到边缘即触发加载(无限滚动,不靠点击):该侧进入加载态(转 spinner)并标记待露出。
+      // 'start' 仅在显式 backfill 时启用。
+      if (edge === 'end' || (edge === 'start' && this.backfill)) {
+        this.startSpin(edge);
+        if (edge === 'end') this.pendingPanToEnd = true;
+        else this.pendingPanToStart = true;
+      }
       this.onReachEdge(edge, [this.v0, this.v1]);
     }
   }
@@ -559,10 +891,81 @@ export class Tracelane {
    */
   private draw(): void {
     if (this.destroyed || this.rafId !== null) return;
+    // spin 动画的独立 rAF 循环本就每帧 render(读最新状态),此时再排一帧是同帧双重整帧渲染 —— 跳过。
+    if (this.spinRaf !== null) return;
     this.rafId = requestAnimationFrame(() => {
       this.rafId = null;
       this.render();
     });
+  }
+
+  /** 本帧时间轴是否用绝对(墙钟)标签;'auto' 带滞回,详见设计文档 §4 */
+  private resolveAxisAbsolute(): boolean {
+    if (this.axisMode === 'elapsed') return false;
+    if (this.originEpoch == null) {
+      if (this.axisMode === 'absolute' && !this.warnedNoOrigin) {
+        this.warnedNoOrigin = true;
+        // eslint-disable-next-line no-console
+        console.warn('[tracelane] axis:"absolute" 需要 originEpoch,未提供 → 回退 elapsed');
+      }
+      return false;
+    }
+    if (this.axisMode === 'absolute') return true;
+    // auto:span 阈值带 ±20% 滞回;v0<0 原点接缝带死区,避免逐帧翻转
+    const span = this.v1 - this.v0;
+    const thr = this.autoAbsoluteThresholdMs;
+    const seamBand = Math.abs(span) * 0.01;
+    if (this.axisAbsoluteLatched) {
+      if (span <= thr * 0.8 && this.v0 > seamBand) this.axisAbsoluteLatched = false;
+    } else if (span >= thr * 1.2 || this.v0 < -seamBand) {
+      this.axisAbsoluteLatched = true;
+    }
+    return this.axisAbsoluteLatched;
+  }
+
+  /** 画时间轴网格线 + 标签:elapsed 走 niceStep+formatTime;absolute 走日历刻度+formatAxis */
+  private drawTimeAxis(W: number, H: number): void {
+    const { ctx, theme } = this;
+    ctx.textAlign = 'center';
+    if (this.resolveAxisAbsolute() && this.originEpoch != null) {
+      const origin = this.originEpoch;
+      const targetTicks = Math.max((W - this.labelWidth) / 85, 1);
+      const stepSel = pickCalendarStep(this.v1 - this.v0, targetTicks);
+      const ticks = calendarTicks(origin + this.v0, origin + this.v1, stepSel, origin, this.timezone);
+      for (const tk of ticks) {
+        const px = this.xOf(tk.offset);
+        ctx.strokeStyle = theme.grid;
+        ctx.beginPath();
+        ctx.moveTo(px, AXIS_H);
+        ctx.lineTo(px, H);
+        ctx.stroke();
+        const label = this.fmtAxis(tk.abs, {
+          unit: tk.unit,
+          stepMs: stepSel.approxMs,
+          isDayBoundary: tk.isDayBoundary
+        });
+        if (tk.isDayBoundary) {
+          ctx.font = `600 11px ${theme.fontFamily}`;
+          ctx.fillStyle = theme.textSecondary; // 日界:加粗日期 chip
+        } else {
+          ctx.fillStyle = theme.textTertiary;
+        }
+        ctx.fillText(label, px, 10);
+        if (tk.isDayBoundary) ctx.font = `11px ${theme.fontFamily}`; // 复位,免影响后续
+      }
+      return;
+    }
+    const step = niceStep((this.v1 - this.v0) / Math.max((W - this.labelWidth) / 85, 1));
+    for (let t = Math.ceil(this.v0 / step) * step; t <= this.v1; t += step) {
+      const px = this.xOf(t);
+      ctx.strokeStyle = theme.grid;
+      ctx.beginPath();
+      ctx.moveTo(px, AXIS_H);
+      ctx.lineTo(px, H);
+      ctx.stroke();
+      ctx.fillStyle = theme.textTertiary;
+      ctx.fillText(this.fmt(t), px, 10);
+    }
   }
 
   private render(): void {
@@ -574,19 +977,8 @@ export class Tracelane {
     ctx.font = `11px ${theme.fontFamily}`;
     ctx.textBaseline = 'middle';
 
-    // 时间轴刻度
-    const step = niceStep((this.v1 - this.v0) / Math.max((W - this.labelWidth) / 85, 1));
-    ctx.textAlign = 'center';
-    for (let t = Math.ceil(this.v0 / step) * step; t <= this.v1; t += step) {
-      const px = this.xOf(t);
-      ctx.strokeStyle = theme.grid;
-      ctx.beginPath();
-      ctx.moveTo(px, AXIS_H);
-      ctx.lineTo(px, H);
-      ctx.stroke();
-      ctx.fillStyle = theme.textTertiary;
-      ctx.fillText(this.fmt(t), px, 10);
-    }
+    // 时间轴刻度(elapsed 时段 / absolute 墙钟,按 axis 解析)
+    this.drawTimeAxis(W, H);
 
     // 行(仅可视区间,虚拟渲染)
     ctx.save();
@@ -624,49 +1016,97 @@ export class Tracelane {
 
     this.minimap?.draw({
       allSpans: this.filteredSpans,
+      // 未过滤时 filteredSpans 即 allSpans,可用对齐的 order 数组免 Map 查找;过滤态传 null 回退
+      order: this.filteredSpans === this.allSpans ? this.allSpansOrder : null,
       orderIdx: this.orderIdx,
       totalCount: this.totalCount,
       extent: this.extent,
+      domain: this.currentDomain(),
       v0: this.v0,
       v1: this.v1,
       colorFor: (n) => this.colorFor(n)
     });
   }
 
-  /** 末端加载提示当前是否可见(开启 onReachEdge 且视口紧贴末端) */
+  /** 末端加载提示当前是否可见(开启 onReachEdge、未到头、且视口紧贴末端) */
   private endHintVisible(): boolean {
-    if (!this.onReachEdge) return false;
+    if (!this.onReachEdge || this.edgeExhausted.end) return false;
     const eps = Math.max((this.v1 - this.v0) * 1e-4, 0.5);
     return this.extent[1] - this.v1 <= eps;
   }
 
-  /** 提示图标中心(右缘,垂直居中) */
+  /** 起点(历史)加载提示是否可见(需 backfill、未到头、且视口紧贴起点) */
+  private startHintVisible(): boolean {
+    if (!this.onReachEdge || !this.backfill || this.edgeExhausted.start) return false;
+    const eps = Math.max((this.v1 - this.v0) * 1e-4, 0.5);
+    return this.v0 - this.extent[0] <= eps;
+  }
+
+  /** 加载 spinner 中心(右缘,垂直居中) */
   private endHintCenter(): { cx: number; cy: number } {
     return { cx: this.width - 18, cy: AXIS_H + (this.height - AXIS_H) / 2 };
   }
 
-  /** 点是否落在加载提示的可点区域(且提示可见) */
-  private endHintHit(x: number, y: number): boolean {
-    if (!this.endHintVisible()) return false;
-    const { cx, cy } = this.endHintCenter();
-    return Math.abs(x - cx) <= 12 && Math.abs(y - cy) <= 16;
+  /** 加载 spinner 中心(左缘文字栏右侧,垂直居中) */
+  private startHintCenter(): { cx: number; cy: number } {
+    return { cx: this.labelWidth + 18, cy: AXIS_H + (this.height - AXIS_H) / 2 };
   }
 
   /**
-   * 滑动加载边缘提示:开启 onReachEdge 后,视口贴到数据**末端**时在右缘画一个刷新图标,
-   * 提示这边还能拖出更多内容。判定与 maybeReachEdge('end') 对齐(紧贴边才显示);
-   * 图标也可直接点击触发加载(见 handleWindowMouseUp)。只提示末端。
+   * 边缘加载的视觉反馈(两端逐边、同一套规则,左/右/双侧表现一致):
+   * - 正在加载该侧 → 画 spinner(转圈);
+   * - 否则若该侧贴边且可加载(未到头)→ 画一抹极淡的边缘渐隐,暗示「这边还能拖出更多」。
+   * 不画可点图标、不参与点击 —— 触发只靠拖到边缘(无限滚动)。
    */
   private drawEdgeHints(): void {
-    if (!this.endHintVisible() && !this.loadingMore) return;
+    if (this.isSpinning('end')) {
+      const { cx, cy } = this.endHintCenter();
+      this.drawRefreshIcon(cx, cy, false, this.spinAt.end);
+    } else if (this.endHintVisible()) {
+      this.drawEdgeFade('end');
+    }
+    if (this.isSpinning('start')) {
+      const { cx, cy } = this.startHintCenter();
+      this.drawRefreshIcon(cx, cy, true, this.spinAt.start);
+    } else if (this.startHintVisible()) {
+      this.drawEdgeFade('start');
+    }
+  }
+
+  /** 极淡的边缘渐隐:从该侧边缘向内 fade 到透明,提示「这边还有更多」。两端镜像对称。 */
+  private drawEdgeFade(side: 'start' | 'end'): void {
+    const { ctx } = this;
+    const top = AXIS_H;
+    const h = this.height - AXIS_H;
+    const w = 40;
+    const edgeX = side === 'start' ? this.labelWidth : this.width;
+    const innerX = side === 'start' ? this.labelWidth + w : this.width - w;
+    const base = this.edgeFadeBase(); // 主题感知:暗底用白、亮底用黑
+    const g = ctx.createLinearGradient(edgeX, top, innerX, top);
+    g.addColorStop(0, `rgba(${base}, 0.13)`); // 边缘最淡影
+    g.addColorStop(1, `rgba(${base}, 0)`); // 向内透明
+    ctx.fillStyle = g;
+    ctx.fillRect(Math.min(edgeX, innerX), top, w, h);
+  }
+
+  /** 边缘渐隐基色:按主题文字亮度判定暗/亮主题 —— 暗主题(亮字)用白影,亮主题用黑影 */
+  private edgeFadeBase(): string {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(this.theme.text);
+    if (!m) return '127, 127, 127';
+    const lum = (parseInt(m[1], 16) + parseInt(m[2], 16) + parseInt(m[3], 16)) / 3;
+    return lum > 128 ? '255, 255, 255' : '0, 0, 0';
+  }
+
+  /** 画刷新/加载图标。mirror 水平翻转(用于左缘);spinSince>0 时按其起转时刻匀速旋转 */
+  private drawRefreshIcon(cx: number, cy: number, mirror: boolean, spinSince: number): void {
     const { ctx, theme } = this;
-    const { cx, cy } = this.endHintCenter();
     const r = 6.5;
     ctx.save();
     ctx.translate(cx, cy);
-    if (this.loadingMore) {
+    if (mirror) ctx.scale(-1, 1);
+    if (spinSince > 0) {
       // 加载中:按时间匀速旋转(~1.1 圈/秒)
-      ctx.rotate(((performance.now() - this.spinStart) / 1000) * Math.PI * 2 * 1.1);
+      ctx.rotate(((performance.now() - spinSince) / 1000) * Math.PI * 2 * 1.1);
     }
     ctx.strokeStyle = theme.textSecondary;
     ctx.fillStyle = theme.textSecondary;
@@ -710,41 +1150,53 @@ export class Tracelane {
     ctx.restore();
   }
 
-  /** 进入加载态:启动旋转动画循环 + 安全超时(接入方迟迟不返回时自动停) */
-  private startSpin(): void {
-    if (this.loadingMore) return;
-    this.loadingMore = true;
-    this.spinStart = performance.now();
-    const tick = (): void => {
-      if (this.destroyed || !this.loadingMore) {
-        this.spinRaf = null;
-        return;
-      }
-      this.render();
-      this.spinRaf = requestAnimationFrame(tick);
-    };
-    if (this.spinRaf === null) this.spinRaf = requestAnimationFrame(tick);
-    if (this.spinTimeout !== null) clearTimeout(this.spinTimeout);
-    this.spinTimeout = window.setTimeout(() => this.stopSpin(), 12000);
+  /** 是否有边在转(不传 edge 则任一侧) */
+  private isSpinning(edge?: 'start' | 'end'): boolean {
+    return edge ? this.spinAt[edge] > 0 : this.spinAt.start > 0 || this.spinAt.end > 0;
   }
 
-  /** 清理旋转状态(不重绘) */
-  private clearSpin(): void {
-    this.loadingMore = false;
-    if (this.spinRaf !== null) {
+  /** 让某侧进入加载态:起转该侧图标 + 该侧安全超时;start/end 可并发各自转。 */
+  private startSpin(edge: 'start' | 'end'): void {
+    if (this.spinAt[edge] > 0) return; // 该侧已在转
+    this.spinAt[edge] = performance.now();
+    if (this.spinRaf === null) {
+      const tick = (): void => {
+        if (this.destroyed || !this.isSpinning()) {
+          this.spinRaf = null;
+          return;
+        }
+        this.render();
+        this.spinRaf = requestAnimationFrame(tick);
+      };
+      this.spinRaf = requestAnimationFrame(tick);
+    }
+    if (this.spinTimer[edge] !== null) clearTimeout(this.spinTimer[edge] as number);
+    this.spinTimer[edge] = window.setTimeout(() => this.stopSpin(edge), 12000);
+  }
+
+  /** 清理旋转状态(不重绘)。传 edge 只停那一侧,不传停两侧;无侧在转则停 rAF。 */
+  private clearSpin(edge?: 'start' | 'end'): void {
+    const edges: ('start' | 'end')[] = edge ? [edge] : ['start', 'end'];
+    for (const e of edges) {
+      this.spinAt[e] = 0;
+      if (this.spinTimer[e] !== null) {
+        clearTimeout(this.spinTimer[e] as number);
+        this.spinTimer[e] = null;
+      }
+    }
+    if (!this.isSpinning() && this.spinRaf !== null) {
       cancelAnimationFrame(this.spinRaf);
       this.spinRaf = null;
     }
-    if (this.spinTimeout !== null) {
-      clearTimeout(this.spinTimeout);
-      this.spinTimeout = null;
-    }
   }
 
-  /** 安全超时回调:停转并恢复静止 */
-  private stopSpin(): void {
-    if (!this.loadingMore) return;
-    this.clearSpin();
+  /** 安全超时回调:停某侧转并恢复静止。加载迟迟不返回(超时)即放弃该侧待露出,
+   *  避免之后某个无关的 keepView setData 把视口意外平移过去。 */
+  private stopSpin(edge: 'start' | 'end'): void {
+    if (this.spinAt[edge] === 0) return;
+    this.clearSpin(edge);
+    if (edge === 'end') this.pendingPanToEnd = false;
+    else this.pendingPanToStart = false;
     this.draw();
   }
 
@@ -925,6 +1377,7 @@ export class Tracelane {
 
   private readonly handleWheel = (e: WheelEvent): void => {
     e.preventDefault();
+    this.exitLive(); // 滚轮缩放/平移/纵向滚动都算用户接管 → 退出实时跟随
     const rect = this.canvas.getBoundingClientRect();
     const px = e.clientX - rect.left;
     if (e.ctrlKey || e.metaKey) {
@@ -969,6 +1422,7 @@ export class Tracelane {
       const dx = px - this.drag.x;
       const dy = py - this.drag.y;
       this.drag.moved = Math.max(this.drag.moved, Math.abs(dx), Math.abs(dy));
+      if (this.drag.moved >= 4) this.exitLive(); // 真正拖动了 → 用户接管,退出实时跟随
       const dt = (-dx / (this.width - this.labelWidth)) * (this.drag.v1 - this.drag.v0);
       this.v0 = this.drag.v0 + dt;
       this.v1 = this.drag.v1 + dt;
@@ -983,24 +1437,35 @@ export class Tracelane {
       return;
     }
 
-    this.hoverRow = py > AXIS_H ? Math.floor((py - AXIS_H + this.scrollY) / this.rowHeight) : -1;
-    this.hoverNode = null;
-    if (this.hoverRow >= 0 && this.hoverRow < this.rows.length) {
-      const node = this.rows[this.hoverRow].node;
+    // 先算新命中,再与上次对比 —— 仅当命中行/节点变化时才重绘 canvas;
+    // 在静止内容上滑动(命中不变)不再每帧整帧 render,大幅降交互期 CPU/GC。
+    const prevRow = this.hoverRow;
+    const prevNode = this.hoverNode;
+    let newRow = py > AXIS_H ? Math.floor((py - AXIS_H + this.scrollY) / this.rowHeight) : -1;
+    let newNode: TraceNode | null = null;
+    if (newRow >= 0 && newRow < this.rows.length) {
+      const node = this.rows[newRow].node;
       this.canvas.style.cursor = 'pointer';
       if (px > this.labelWidth) {
         const [x0, x1] = this.barHitRange(node);
-        if (px >= x0 && px <= x1) this.hoverNode = node;
+        if (px >= x0 && px <= x1) newNode = node;
       }
     } else {
-      this.hoverRow = -1;
+      newRow = -1;
       this.canvas.style.cursor = 'grab';
     }
+    this.hoverRow = newRow;
+    this.hoverNode = newNode;
 
-    if (this.hoverNode && this.tooltipRenderer !== false) {
-      const html = this.tooltipRenderer(this.hoverNode, this.expanded.has(this.hoverNode.id));
-      this.tooltipEl.innerHTML = html;
-      this.tooltipEl.style.display = 'block';
+    if (newNode && this.tooltipRenderer !== false) {
+      // 内容仅在「节点 + 展开态」变化时重建(innerHTML 解析+重建 DOM 远贵于改样式);位置每次跟随。
+      // 把展开态纳入键:展开/折叠后停在同一 group 上,tooltip 文案不会陈旧(默认 tooltip 的 group 分支依赖它)。
+      const key = `${newNode.id}|${this.expanded.has(newNode.id)}`;
+      if (key !== this.lastTooltipKey) {
+        this.tooltipEl.innerHTML = this.tooltipRenderer(newNode, this.expanded.has(newNode.id));
+        this.lastTooltipKey = key;
+      }
+      this.tooltipEl.style.display = 'block'; // 确保可见(拖拽期间曾被 hideTooltip)
       let tx = px + 14;
       if (tx + 290 > this.width) tx = Math.max(0, px - 300);
       this.tooltipEl.style.left = `${tx}px`;
@@ -1008,7 +1473,7 @@ export class Tracelane {
     } else {
       this.hideTooltip();
     }
-    this.draw();
+    if (newRow !== prevRow || newNode !== prevNode) this.draw();
   };
 
   private readonly handleMouseLeave = (): void => {
@@ -1041,14 +1506,8 @@ export class Tracelane {
     }
     // 点击:用按下时的位置判定行,避免松开时轻微位移
     void e;
-    // 先判是否点中末端「加载更多」图标:直接触发加载,并标记加载后滑到新数据
-    if (this.onReachEdge && this.endHintHit(startX, startY)) {
-      this.pendingPanToEnd = true;
-      this.reachedEdge = 'end'; // 防止紧随的拖动重复触发
-      this.startSpin(); // 进入加载态,图标开始旋转,直到 setData 并入数据
-      this.onReachEdge('end', [this.v0, this.v1]);
-      return;
-    }
+    // 注:边缘加载不靠点击触发 —— 拖到边缘即由 maybeReachEdge 触发(无限滚动),
+    // 这里只处理行的展开/选中。
     const idx = startY > AXIS_H ? Math.floor((startY - AXIS_H + this.scrollY) / this.rowHeight) : -1;
     if (idx >= 0 && idx < this.rows.length) {
       const node = this.rows[idx].node;
@@ -1074,8 +1533,8 @@ export class Tracelane {
     if (!this.minimapCanvas) return;
     const rect = this.minimapCanvas.getBoundingClientRect();
     const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    const [e0, e1] = this.extent;
-    const t = e0 + ratio * (e1 - e0);
+    const [d0, d1] = this.currentDomain(); // 与缩略图显示一致(总域),点哪定位到哪
+    const t = d0 + ratio * (d1 - d0);
     const span = this.v1 - this.v0;
     this.v0 = t - span / 2;
     this.v1 = t + span / 2;
@@ -1086,6 +1545,7 @@ export class Tracelane {
 
   private hideTooltip(): void {
     this.tooltipEl.style.display = 'none';
+    this.lastTooltipKey = ''; // 隐藏后强制下次 hover 重建,避免复用过期内容
   }
 
   private emitView(): void {
