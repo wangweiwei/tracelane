@@ -102,7 +102,11 @@ function feedTrace(t: number, client: 'ios' | 'h5'): void {
   for (let i = 0; i < 6; i += 1) {
     const g = push({
       parentSpanId: root,
-      label: `GET /api/feed?page=${i + 1}`,
+      // 首个分页用一条超长 URL(带一堆 query,无空格)演示 tooltip 长文本换行不溢出边框
+      label:
+        i === 0
+          ? 'GET /api/feed?page=1&category=electronics&sort=recommended&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9&sig=9f8c2a1b7d4e&utm_source=push&utm_campaign=summer_sale_2026'
+          : `GET /api/feed?page=${i + 1}`,
       service: 'gw',
       ts: BASE + t + 150 + i * 420,
       dur: 150,

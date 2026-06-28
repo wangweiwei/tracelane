@@ -13,6 +13,7 @@ import { type Row, collectVisibleSpans, flattenRows, indexTree, isExpandable, pa
 import { defaultTooltip } from './tooltip';
 import { Minimap } from './minimap';
 import {
+  type CalendarTick,
   type TimeUnit,
   type TimeZoneMode,
   calendarTicks,
@@ -63,6 +64,8 @@ export class Tracelane {
   ) => string;
   /** 'auto' 模式的绝对/时段闩锁;带滞回防止在阈值/原点接缝处逐帧翻转 */
   private axisAbsoluteLatched = false;
+  /** 绝对轴刻度+标签单槽缓存:键含 v0|v1|W|tz|origin;视口不变的帧(spin/纵滚)直接复用,0 重算 */
+  private axisCache: { key: string; ticks: CalendarTick[]; labels: string[] } | null = null;
   /** originEpoch 缺失时只 warn 一次 */
   private warnedNoOrigin = false;
   private readonly tooltipRenderer: false | ((node: TraceNode, expanded: boolean) => string);
@@ -203,6 +206,7 @@ export class Tracelane {
       pointerEvents: 'none',
       zIndex: '10',
       maxWidth: '280px',
+      overflowWrap: 'anywhere', // 长 URL/无空格串在框内换行,不溢出边框(继承给标题与子行)
       padding: '8px 10px',
       borderRadius: '8px',
       fontSize: '12px',
@@ -929,28 +933,36 @@ export class Tracelane {
     ctx.textAlign = 'center';
     if (this.resolveAxisAbsolute() && this.originEpoch != null) {
       const origin = this.originEpoch;
-      const targetTicks = Math.max((W - this.labelWidth) / 85, 1);
-      const stepSel = pickCalendarStep(this.v1 - this.v0, targetTicks);
-      const ticks = calendarTicks(origin + this.v0, origin + this.v1, stepSel, origin, this.timezone);
-      for (const tk of ticks) {
+      // 刻度+标签只依赖 (v0, v1, W, tz, origin) —— 同视口的帧(spin/纵滚/hover)直接复用,
+      // 跳过逐 tick 的 new Date / calendarTicks / 标签拼串(键变才重算)。
+      const key = `${this.v0}|${this.v1}|${W}|${this.timezone}|${origin}`;
+      let cache = this.axisCache;
+      if (!cache || cache.key !== key) {
+        const targetTicks = Math.max((W - this.labelWidth) / 85, 1);
+        const stepSel = pickCalendarStep(this.v1 - this.v0, targetTicks);
+        const ticks = calendarTicks(origin + this.v0, origin + this.v1, stepSel, origin, this.timezone);
+        const labels = ticks.map((tk) =>
+          this.fmtAxis(tk.abs, { unit: tk.unit, stepMs: stepSel.approxMs, isDayBoundary: tk.isDayBoundary })
+        );
+        cache = { key, ticks, labels };
+        this.axisCache = cache;
+      }
+      const { ticks, labels } = cache;
+      for (let i = 0; i < ticks.length; i += 1) {
+        const tk = ticks[i];
         const px = this.xOf(tk.offset);
         ctx.strokeStyle = theme.grid;
         ctx.beginPath();
         ctx.moveTo(px, AXIS_H);
         ctx.lineTo(px, H);
         ctx.stroke();
-        const label = this.fmtAxis(tk.abs, {
-          unit: tk.unit,
-          stepMs: stepSel.approxMs,
-          isDayBoundary: tk.isDayBoundary
-        });
         if (tk.isDayBoundary) {
           ctx.font = `600 11px ${theme.fontFamily}`;
           ctx.fillStyle = theme.textSecondary; // 日界:加粗日期 chip
         } else {
           ctx.fillStyle = theme.textTertiary;
         }
-        ctx.fillText(label, px, 10);
+        ctx.fillText(labels[i], px, 10);
         if (tk.isDayBoundary) ctx.font = `11px ${theme.fontFamily}`; // 复位,免影响后续
       }
       return;
