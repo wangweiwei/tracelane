@@ -1,6 +1,6 @@
 {
   "name": "tracelane",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Zero-dependency TypeScript Canvas library for full-link trace and user-behavior waterfalls: zoomable time axis, causal tree, sibling folding, virtualized rows.",
   "keywords": [
     "trace",
