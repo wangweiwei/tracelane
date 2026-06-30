@@ -32,6 +32,8 @@ interface DragState {
 
 const AXIS_H = 22;
 const MIN_WINDOW_MS = 20;
+/** 触发边缘加载所需的「拉过边缘」距离(px)。贴边的轻微抖动不触发,需明确把视口拖出此距离 */
+const EDGE_PULL_PX = 64;
 const FALLBACK_CATEGORY: CategoryStyle = { label: '未知类别', color: '#888888' };
 
 /**
@@ -817,10 +819,13 @@ export class Tracelane {
   private maybeReachEdge(desiredV0: number, span: number): void {
     if (!this.onReachEdge) return;
     const [e0, e1] = this.extent;
-    const eps = Math.max(span * 1e-4, 0.5);
+    // 去敏:必须把视口「拉过」边缘 EDGE_PULL_PX 这段明确距离才触发加载 ——
+    // 贴边的轻微抖动/惯性不再误触发。px 阈值按当前缩放换算成时间过冲量,缩放无关。
+    const innerW = Math.max(this.width - this.labelWidth, 1);
+    const pull = (EDGE_PULL_PX / innerW) * span;
     let edge: 'start' | 'end' | null = null;
-    if (desiredV0 < e0 - eps) edge = 'start';
-    else if (desiredV0 + span > e1 + eps) edge = 'end';
+    if (desiredV0 < e0 - pull) edge = 'start';
+    else if (desiredV0 + span > e1 + pull) edge = 'end';
     if (edge === null) {
       this.reachedEdge = null; // 离开边缘,重新武装
     } else if (this.reachedEdge !== edge) {
